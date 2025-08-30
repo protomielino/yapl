@@ -28,8 +28,8 @@ float function (float x)
 
 float map(float input, float input_start, float input_end, float output_start, float output_end)
 {
-    double slope = 1.0 * (output_end - output_start) / (input_end - input_start);
-    double output = output_start + round(slope * (input - input_start));
+    float slope = 1.0 * (output_end - output_start) / (input_end - input_start);
+    float output = output_start + slope * (input - input_start);
     return output;
 }
 

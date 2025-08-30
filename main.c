@@ -14,7 +14,9 @@
 
 #include "maths.h"
 
-#define WIDTH  700
+#include "particle.h"
+
+#define WIDTH  1360
 #define HEIGHT 768
 
 int worldWidth;
@@ -49,8 +51,14 @@ int numTypes;
 float rMax;
 float dt;
 float **forces;
+float *masses;
 float forceFactor;
 float frictionHalfLife;
+
+float minParticleMass, maxParticleMass;
+
+particle *swarm;
+int swarm_len;
 
 float hueStep;
 float satStep;
@@ -60,11 +68,7 @@ float frictionFactor;
 
 float real_time = 0.0f;
 
-unsigned int *particleType = NULL;
-float *positionsX = NULL;
-float *positionsY  = NULL;
-float *velocitiesX = NULL;
-float *velocitiesY = NULL;
+particle *swarm = NULL;
 
 void randomizeParticles();
 float** makeRandomMatrix();
@@ -75,28 +79,28 @@ int cell_col_hover;
 int cell_row_selected;
 int cell_col_selected;
 
-void shift_particles_up()
+void shift_particles_up(particle *this)
 {
     for (int i = 0; i < numParticles; ++i) {
-        positionsY[i] -= 10.0f;
+        this[i].position.y -= 10.0f;
     }
 }
-void shift_particles_down()
+void shift_particles_down(particle *this)
 {
     for (int i = 0; i < numParticles; ++i) {
-        positionsY[i] += 10.0f;
+        this[i].position.y += 10.0f;
     }
 }
-void shift_particles_left()
+void shift_particles_left(particle *this)
 {
     for (int i = 0; i < numParticles; ++i) {
-        positionsX[i] -= 10.0f;
+        this[i].position.x -= 10.0f;
     }
 }
-void shift_particles_right()
+void shift_particles_right(particle *this)
 {
     for (int i = 0; i < numParticles; ++i) {
-        positionsX[i] += 10.0f;
+        this[i].position.x += 10.0f;
     }
 }
 
@@ -106,6 +110,30 @@ void zeroParticlesForces()
         for(int j = 0; j < numTypes; j++) {
             forces[i][j] = 0.0f;
         }
+    }
+}
+
+void zeroParticlesMasses()
+{
+    for(int i = 0; i < numTypes; i++) {
+            masses[i] = 0.0f;
+    }
+}
+
+void randomizeMasses()
+{
+    for(int i = 0; i < numTypes; i++) {
+        masses[i] = random_range(minParticleMass, maxParticleMass);
+    }
+}
+
+void randomizeParticles(particle *this)
+{
+    for(int i = 0; i < numParticles; i++) {
+        this[i].type = floorf(drand48() * numTypes);
+        this[i].position = (Vector2){drand48()*WIDTH, drand48()*HEIGHT};
+        this[i].velocity = Vector2Zero();
+        this[i].mass = masses[this[i].type];
     }
 }
 
@@ -140,15 +168,38 @@ void show_HUD()
 
 void show_DBG()
 {
-    float textDim_tmp = textDim;
-    float dx_tmp = dx;
-    float dy_tmp = dy;
 //    textDim /= 1.5;
     dx = dx*3 + 2;
     //dy = dy/2;
 
+    if(showHelp) {
+        ty += dy;
+
+        tx = bx;
+        sprintf(text, "[r] : randomize positions");
+        DrawText(text, tx, ty, textDim, WHITE);
+        ty += dy;
+        sprintf(text, "[R] : reset pan-zoom");
+        DrawText(text, tx, ty, textDim, WHITE);
+        ty += dy;
+        sprintf(text, "[SPACE] : randomize parameters");
+        DrawText(text, tx, ty, textDim, WHITE);
+        ty += dy;
+        sprintf(text, "[z,x,c,v] : forces, minDistances, masses, radii");
+        DrawText(text, tx, ty, textDim, WHITE);
+        ty += dy;
+        sprintf(text, "[LSHIFT+DIR_KEYS] : shift field");
+        DrawText(text, tx, ty, textDim, WHITE);
+        ty += dy;
+    }
 
     if(showForcesDBG) {
+        ty += dy;
+        sprintf(text, "forces:");
+        DrawText(text, 10, ty, textDim, WHITE);
+        ty += dy;
+        ty += dy;
+
         for (int col = 0; col < numTypes; ++col) {
             Vector2 pos = {bx + cell_size + (cell_size+2)*col + 5, ty};
             Vector2 siz = {cell_size, cell_size};
@@ -175,6 +226,7 @@ void show_DBG()
                 if (forces[row][col] == -0.0f) {
                     c = BLACK;
                 }
+                c.a = 128;
                 DrawRectangleV(pos, siz, c);
                 if (cell_row_hover == row && cell_col_hover == col) {
                     DrawRectangleLines(pos.x-1, pos.y-1, siz.x+2, siz.y+2, WHITE);
@@ -188,52 +240,14 @@ void show_DBG()
                 DrawText(text, 2+ pos.x+cell_size/2.0f - textDim, 1+ pos.y + cell_size/2.0f - textDim/3, textDim, WHITE);
             }
         }
-#if 0
-        float col_tdx = dx;
-        float col_tdy = dy;
-        float col_tbx = bx;
-        float col_tby = ty;
-        float col_tx = col_tbx + col_tdx/2;
-        float col_ty = col_tby + col_tdy*2.0f + textDim/2.0f;
-
-        for (int row = 0; row < numTypes; ++row) {
-            DrawCircle(col_tx, col_ty, 5,ColorFromHSV((float)row*hueStep, 0.8f, 1.0f));
-            col_tx += col_tdx;
-        }
-        col_tx = bx;
-        for (int col = 0; col < numTypes; ++col) {
-            DrawCircle(col_tx, col_ty+col_tdy, 5,ColorFromHSV((float)col*hueStep, 0.8f, 1.0f));
-            col_ty += col_tdy;
-        }
-
+    }
+    if(showMinDistancesDBG) {
         ty += dy;
 
-        sprintf(text, "forces:");
+        sprintf(text, "minDistances:");
         DrawText(text, 10, ty, textDim, WHITE);
         ty += dy;
         ty += dy;
-        for (int i = 0; i < numTypes; i++) {
-            tx = bx+dx/4;
-
-            for (int j = 0; j < numTypes; j++) {
-                sprintf(text, "[       ]");
-                DrawText(text, tx, ty, textDim,
-                            ColorFromHSV((float)i*hueStep,
-                                         0.8f,
-                                         1.0f));
-                sprintf(text, "  %+.1f  ", forces[i][j]);
-                DrawText(text, tx, ty, textDim,
-                            ColorFromHSV((float)j*hueStep,
-                                         0.8f,
-                                         1.0f));
-                tx += dx;
-            }
-            ty += dy;
-        }
-        ty += dy;
-#endif
-    }
-    if(showMinDistancesDBG) {
 //        sprintf(text, "minDistances:");
 //        DrawText(text, 10, ty, textDim, WHITE);
 //        ty += dy;
@@ -257,8 +271,44 @@ void show_DBG()
 //        ty += dy;
     }
     if(showMassesDBG) {
-//        sprintf(text, "masses:");
-//        DrawText(text, 10, ty, textDim, WHITE);
+        ty += dy;
+
+        sprintf(text, "masses:");
+        DrawText(text, 10, ty, textDim, WHITE);
+        ty += dy;
+        sprintf(text, "min: %.1f", minParticleMass);
+        DrawText(text, 10, ty, textDim, WHITE);
+        ty += dy;
+        sprintf(text, "max: %.1f", maxParticleMass);
+        DrawText(text, 10, ty, textDim, WHITE);
+        ty += dy;
+        ty += dy;
+
+        for (int col = 0; col < numTypes; ++col) {
+            Vector2 pos = {bx + cell_size + (cell_size+2)*col + 5, ty};
+            Vector2 siz = {cell_size, cell_size};
+            DrawRectangleV(pos, siz, ColorFromHSV((float)col*hueStep, 0.8f, 1.0f));
+        }
+        for (int col = 0; col < numTypes; ++col) {
+            int row = 0;
+            Vector2 pos = {bx + cell_size + (cell_size+2)*col + 5, ty + cell_size + (cell_size+2)*row + 5};
+            Vector2 siz = {cell_size, cell_size};
+            Color c = {};
+            c = ColorFromHSV(360.0f / 3.0f, 1.0f, map(masses[col], minParticleMass, maxParticleMass, 0.0f, 1.0f));
+            c.a = 128;
+            DrawRectangleV(pos, siz, c);
+            if (cell_row_hover == row && cell_col_hover == col) {
+                DrawRectangleLines(pos.x-1, pos.y-1, siz.x+2, siz.y+2, WHITE);
+            }
+            if (cell_row_selected == row && cell_col_selected == col) {
+                DrawRectangleLines(pos.x-2, pos.y-2, siz.x+4, siz.y+4, YELLOW);
+            }
+
+            sprintf(text, " %.1f", masses[col]);
+            DrawText(text, pos.x+cell_size/2.0f - textDim, pos.y + cell_size/2.0f - textDim/3, textDim+3, BLACK);
+            DrawText(text, 2+ pos.x+cell_size/2.0f - textDim, 1+ pos.y + cell_size/2.0f - textDim/3, textDim, WHITE);
+        }
+
 //        ty += dy;
 //        tx = bx;
 //        for (int i = 0; i < numTypes; i++) {
@@ -278,6 +328,12 @@ void show_DBG()
 //        ty += dy;
     }
     if(showRadiiDBG) {
+        ty += dy;
+
+        sprintf(text, "radii:");
+        DrawText(text, 10, ty, textDim, WHITE);
+        ty += dy;
+        ty += dy;
 //        sprintf(text, "radii:");
 //        DrawText(text, 10, ty, textDim, WHITE);
 //        ty += dy;
@@ -300,29 +356,6 @@ void show_DBG()
 //        }
 //        ty += dy;
     }
-
-    dx = dx_tmp;
-    dy = dy_tmp;
-    textDim = textDim_tmp;
-
-    if(showHelp) {
-        tx = bx;
-        sprintf(text, "[r] : randomize positions");
-        DrawText(text, tx, ty, textDim, WHITE);
-        ty += dy;
-        sprintf(text, "[R] : reset pan-zoom");
-        DrawText(text, tx, ty, textDim, WHITE);
-        ty += dy;
-        sprintf(text, "[SPACE] : randomize parameters");
-        DrawText(text, tx, ty, textDim, WHITE);
-        ty += dy;
-        sprintf(text, "[z,x,c,v] : forces, minDistances, masses, radii");
-        DrawText(text, tx, ty, textDim, WHITE);
-        ty += dy;
-        sprintf(text, "[LSHIFT+DIR_KEYS] : shift field");
-        DrawText(text, tx, ty, textDim, WHITE);
-        ty += dy;
-    }
 }
 
 void processInputs()
@@ -332,10 +365,11 @@ void processInputs()
         scale = Vector2One();
     }
     if(IsKeyPressed(KEY_R) && !IsKeyDown(KEY_LEFT_SHIFT)) {
-        randomizeParticles();
+        randomizeParticles(swarm);
     }
     if(IsKeyPressed(KEY_RIGHT_CONTROL)) {
         zeroParticlesForces();
+        zeroParticlesMasses();
     }
     if (IsMouseButtonPressed(MOUSE_BUTTON_MIDDLE)) {
         offset = (Vector2){ 0, 0 };
@@ -351,8 +385,9 @@ void processInputs()
     if(IsKeyPressed(KEY_H) && !IsKeyDown(KEY_LEFT_SHIFT)) {
         showHelp = !showHelp;
     }
-    if(IsKeyPressed(KEY_SPACE) && !IsKeyDown(KEY_LEFT_SHIFT)) {
+    if(IsKeyPressed(KEY_SPACE)) {
         forces = makeRandomMatrix();
+        randomizeMasses();
 //        dt = 0.02f;
     }
     if(IsKeyPressed(KEY_P)) {
@@ -392,22 +427,28 @@ void processInputs()
         showRadiiDBG = !showRadiiDBG;
     }
     if(IsKeyDown(KEY_UP) && IsKeyDown(KEY_LEFT_SHIFT)) {
-        shift_particles_down();
+        shift_particles_down(swarm);
     }
     if(IsKeyDown(KEY_DOWN) && IsKeyDown(KEY_LEFT_SHIFT)) {
-        shift_particles_up();
+        shift_particles_up(swarm);
     }
     if(IsKeyDown(KEY_LEFT) && IsKeyDown(KEY_LEFT_SHIFT)) {
-        shift_particles_right();
+        shift_particles_right(swarm);
     }
     if(IsKeyDown(KEY_RIGHT) && IsKeyDown(KEY_LEFT_SHIFT)) {
-        shift_particles_left();
+        shift_particles_left(swarm);
     }
     if(IsKeyPressed(KEY_UP)) {
-        forces[cell_row_hover][cell_col_hover] += 0.1f;
+        if (showForcesDBG)
+            forces[cell_row_hover][cell_col_hover] += 0.1f;
+        if (showMassesDBG)
+            masses[cell_col_hover] += 0.1f;
     }
     if(IsKeyPressed(KEY_DOWN)) {
-        forces[cell_row_hover][cell_col_hover] -= 0.1f;
+        if (showForcesDBG)
+            forces[cell_row_hover][cell_col_hover] -= 0.1f;
+        if (showMassesDBG)
+            masses[cell_col_hover] -= 0.1f;
     }
 }
 
@@ -510,17 +551,6 @@ float** makeRandomMatrix()
     return rows;
 }
 
-void randomizeParticles()
-{
-    for(int i = 0; i < numParticles; i++) {
-        particleType[i] = floorf(drand48() * numTypes);
-        positionsX[i] = drand48()*WIDTH;
-        positionsY[i] = drand48()*HEIGHT;
-        velocitiesX[i] = 0;
-        velocitiesY[i] = 0;
-    }
-}
-
 float force(float r, float a)
 {
     float beta = 0.3;
@@ -534,7 +564,7 @@ float force(float r, float a)
 }
 
 #undef FOECR_EASE // experimental
-void updateParticles()
+void updateParticles(particle *this)
 {
 #ifdef FOECR_EASE
     float totalVelocity_len_max = 0.0f;
@@ -543,55 +573,51 @@ void updateParticles()
     float DT = 0.0f;
 #endif /* FOECR_EASE */
 
-    float totalForceX = 0.0f;
-    float totalForceY = 0.0f;
-    float totalVelocityX = 0.0f;
-    float totalVelocityY = 0.0f;
+    Vector2 totalForce = Vector2Zero();
+    Vector2 totalVelocity = Vector2Zero();
 
     for (int i = 0; i < numParticles; i++) {
-        totalForceX = 0.0f;
-        totalForceY = 0.0f;
-        totalVelocityX = 0.0f;
-        totalVelocityY = 0.0f;
+        totalForce = Vector2Zero();
+        totalVelocity = Vector2Zero();
 
         for (int j = 0; j < numParticles; j++) {
             if (j == i) continue;
-            float rx = positionsX[j] - positionsX[i];
-            float ry = positionsY[j] - positionsY[i];
-            if(rx > 0.5f * WIDTH) {
-                rx -= WIDTH;
+            Vector2 rv = Vector2Subtract(this[j].position, this[i].position);
+
+            if(rv.x > 0.5f * WIDTH) {
+                rv.x -= WIDTH;
             }
-            if(rx < -0.5f * WIDTH) {
-                rx += WIDTH;
+            if(rv.x < -0.5f * WIDTH) {
+                rv.x += WIDTH;
             }
-            if(ry > 0.5f * HEIGHT) {
-                ry -= HEIGHT;
+            if(rv.y > 0.5f * HEIGHT) {
+                rv.y -= HEIGHT;
             }
-            if(ry < -0.5f * HEIGHT) {
-                ry += HEIGHT;
+            if(rv.y < -0.5f * HEIGHT) {
+                rv.y += HEIGHT;
             }
 
-            float r = sqrt(rx*rx + ry*ry);
+            float r = sqrt(rv.x*rv.x + rv.y*rv.y);
             if (r <= rMax) {
                 if (r > 0 && r < rMax) {
-                    float f = force(r / rMax, forces[particleType[i]][particleType[j]]);
-                    totalForceX += rx / r * f;
-                    totalForceY += ry / r * f;
+                    float f = force(r / rMax, forces[this[i].type][this[j].type]);
+                    //totalForce += rv / r * f;
+                    Vector2 v = Vector2Scale(rv, 1.0f / r);
+                    v = Vector2Scale(v, f);
+                    totalForce = Vector2Add(totalForce, v);
                 }
             }
         }
 
-        totalForceX *= rMax * forceFactor;
-        totalForceY *= rMax * forceFactor;
+        totalForce = Vector2Scale(totalForce, rMax * forceFactor);
 
-        velocitiesX[i] *= frictionFactor;
-        velocitiesY[i] *= frictionFactor;
+        this[i].velocity = Vector2Scale(this[i].velocity, frictionFactor);
 
-        velocitiesX[i] += totalForceX * dt;
-        velocitiesY[i] += totalForceY * dt;
+        Vector2 v = Vector2Scale(totalForce, dt);
+        v = Vector2Scale(v, 1/this[i].mass);
+        this[i].velocity = Vector2Add(this[i].velocity, v);
 
-        totalVelocityX += velocitiesX[i];
-        totalVelocityY += velocitiesY[i];
+        totalVelocity = Vector2Add(totalVelocity, this[i].velocity);
 
 #ifdef FOECR_EASE
         Vector2 v = {totalVelocityX, totalVelocityY};
@@ -643,26 +669,27 @@ void updateParticles()
 #endif /* FOECR_EASE */
 
     for (int i = 0; i < numParticles; i++) {
-        positionsX[i] += velocitiesX[i] * dt;
-        positionsY[i] += velocitiesY[i] * dt;
+
+        Vector2 v = Vector2Scale(this[i].velocity, dt);
+        this[i].position = Vector2Add(this[i].position, v);
 
         // wrap around - toroidal world
-        positionsX[i] = fmodf(positionsX[i] + (float)WIDTH, (float)WIDTH);
-        positionsY[i] = fmodf(positionsY[i] + (float)HEIGHT, (float)HEIGHT);
+        this[i].position.x = fmodf(this[i].position.x + (float)WIDTH, (float)WIDTH);
+        this[i].position.y = fmodf(this[i].position.y + (float)HEIGHT, (float)HEIGHT);
     }
 
     real_time += dt;
 }
 
-void drawParticles()
+void drawParticles(particle *this)
 {
     //ClearBackground(BLACK);
 
     for (int i = 0; i < numParticles; i++) {
-        float screenX = positionsX[i];
-        float screenY = positionsY[i];
+        float screenX = this[i].position.x;
+        float screenY = this[i].position.y;
 //        Color col = ColorFromHSV(360.0f * ((float)particleType[i] / (float)numTypes), 1.0f, 1.0);
-        Color col = ColorFromHSV(particleType[i]*hueStep, 1.0f, 1.0);
+        Color col = ColorFromHSV(this[i].type*hueStep, 1.0f, 1.0);
         Vector2 world = {screenX, screenY};
 //        DrawPixelV(WorldToScreen(world), col);
         float r = 2.0f * Vector2Length(scale);
@@ -678,7 +705,7 @@ int main(int argc, char *argv[])
 
     // Initialization
     showHelp = false;
-    showHUD = true;
+    showHUD = false;
     showForcesDBG = false;
     showMinDistancesDBG = false;
     showMassesDBG = false;
@@ -688,10 +715,12 @@ int main(int argc, char *argv[])
     display = true;
 
     numParticles = 1000;
-    numTypes = 20;
+    numTypes = 6;
     dt = 0.02f;
     frictionHalfLife = 0.040f;
-    rMax = 150.0f;
+    rMax = 100.0f;
+    minParticleMass = 0.1f;
+    maxParticleMass = 2.0f;
     forces = makeRandomMatrix();
     forceFactor = 1.0f;
 
@@ -722,13 +751,18 @@ int main(int argc, char *argv[])
     cell_row_selected = -1;
     cell_col_selected = -1;
 
+    arrsetlen(swarm, numParticles);
+    swarm_len = numParticles;
 
-    arrsetlen(particleType, numParticles);
-    arrsetlen(positionsX, numParticles);
-    arrsetlen(positionsY, numParticles);
-    arrsetlen(velocitiesX, numParticles);
-    arrsetlen(velocitiesY, numParticles);
-    randomizeParticles();
+    arrsetlen(masses, numTypes);
+    for (int i = 0; i < numTypes; ++i) {
+        masses[i] = random_range(minParticleMass, maxParticleMass);
+    }
+    for (int i = 0; i < swarm_len; ++i) {
+        swarm[i].mass = masses[swarm[i].type];
+    }
+
+    randomizeParticles(swarm);
 
     initPanZoom(Vector2Zero(), Vector2One());
     iniHUD();
@@ -736,7 +770,7 @@ int main(int argc, char *argv[])
     //---------------------------------------------------------------------------------------
 
     InitWindow(WIDTH, HEIGHT, "Particle Life");
-//    SetWindowState(FLAG_FULLSCREEN_MODE);
+    SetWindowState(FLAG_FULLSCREEN_MODE);
     SetTargetFPS(30);
     //--------------------------------------------------------------------------------------
 
@@ -752,9 +786,9 @@ int main(int argc, char *argv[])
         frameCounter++;
 
         if (!pause)
-            updateParticles();
+            updateParticles(swarm);
 
-        if (showForcesDBG) {
+        if (showForcesDBG || showMassesDBG) {
             Vector2 mouse_pos = GetMousePosition();
 
             cell_row_hover = (mouse_pos.y - ty - cell_size - 5) / (cell_size+2);
@@ -793,7 +827,7 @@ int main(int argc, char *argv[])
             DrawCircleLinesV(WorldToScreen(cpos), 2.5*Vector2Length(scale), WHITE);
 
             if (display)
-                drawParticles();
+                drawParticles(swarm);
 
             sprintf(text, "[0, 0]");
             cpos = WorldToScreen(cpos);
