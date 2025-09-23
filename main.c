@@ -16,8 +16,8 @@
 
 #include "particle.h"
 
-#define WIDTH  1360
-#define HEIGHT 768
+#define WIDTH  700
+#define HEIGHT 700
 
 int worldWidth;
 int worldHeight;
@@ -48,10 +48,13 @@ bool showRadiiDBG;
 
 int numParticles;
 int numTypes;
-float rMax;
+float minRadius;
+float maxRadius;
 float dt;
 float **forces;
+float **minDistances;
 float *masses;
+float **radii;
 float forceFactor;
 float frictionHalfLife;
 
@@ -120,10 +123,36 @@ void zeroParticlesMasses()
     }
 }
 
+void zeroParticlesMinDistances()
+{
+    for(int i = 0; i < numTypes; i++) {
+        for(int j = 0; j < numTypes; j++) {
+            minDistances[i][j] = 0.0f;
+        }
+    }
+}
+void zeroParticlesRadii()
+{
+    for(int i = 0; i < numTypes; i++) {
+        for(int j = 0; j < numTypes; j++) {
+            radii[i][j] = 0.0f;
+        }
+    }
+}
+
 void randomizeMasses()
 {
     for(int i = 0; i < numTypes; i++) {
         masses[i] = random_range(minParticleMass, maxParticleMass);
+    }
+}
+
+void randomizeMinDistances()
+{
+    for (int row = 0; row < numTypes; ++row) {
+        for (int col = 0; col < numTypes; ++col) {
+            minDistances[row][col] = map(random_range(0.0f, minRadius), 0.0f, minRadius, 0.0f, minRadius/maxRadius);
+        }
     }
 }
 
@@ -168,9 +197,7 @@ void show_HUD()
 
 void show_DBG()
 {
-//    textDim /= 1.5;
     dx = dx*3 + 2;
-    //dy = dy/2;
 
     if(showHelp) {
         ty += dy;
@@ -195,10 +222,18 @@ void show_DBG()
 
     if(showForcesDBG) {
         ty += dy;
+
         sprintf(text, "forces:");
         DrawText(text, 10, ty, textDim, WHITE);
         ty += dy;
+        sprintf(text, "min: %+.2f", -1.0f);
+        DrawText(text, 10, ty, textDim, WHITE);
         ty += dy;
+        sprintf(text, "max: %+.2f", 1.0f);
+        DrawText(text, 10, ty, textDim, WHITE);
+        ty += dy;
+        ty += dy;
+
 
         for (int col = 0; col < numTypes; ++col) {
             Vector2 pos = {bx + cell_size + (cell_size+2)*col + 5, ty};
@@ -241,35 +276,63 @@ void show_DBG()
             }
         }
     }
+
     if(showMinDistancesDBG) {
         ty += dy;
 
         sprintf(text, "minDistances:");
         DrawText(text, 10, ty, textDim, WHITE);
         ty += dy;
+        sprintf(text, "min: %.2f", 0.0f);
+        DrawText(text, 10, ty, textDim, WHITE);
         ty += dy;
-//        sprintf(text, "minDistances:");
-//        DrawText(text, 10, ty, textDim, WHITE);
-//        ty += dy;
-//        for (int i = 0; i < numTypes; i++) {
-//            tx = bx;
-//            for (int j = 0; j < numTypes; j++) {
-//                sprintf(text, "[         ]");
-//                DrawText(text, tx, ty, textDim,
-//                            ColorFromHSV((float)i*hueStep,
-//                                         0.8f,
-//                                         1.0f));
-//                sprintf(text, "  %+.1f  ", minDistances[i][j]);
-//                DrawText(text, tx, ty, textDim,
-//                            ColorFromHSV((float)j*hueStep,
-//                                         0.8f,
-//                                         1.0f));
-//                tx += dx;
-//            }
-//            ty += dy;
-//        }
-//        ty += dy;
+        sprintf(text, "max: %.2f", minRadius);
+        DrawText(text, 10, ty, textDim, WHITE);
+        ty += dy;
+        ty += dy;
+
+        for (int col = 0; col < numTypes; ++col) {
+            Vector2 pos = {bx + cell_size + (cell_size+2)*col + 5, ty};
+            Vector2 siz = {cell_size, cell_size};
+            DrawRectangleV(pos, siz, ColorFromHSV((float)col*hueStep, 0.8f, 1.0f));
+        }
+        for (int row = 0; row < numTypes; ++row) {
+            Vector2 pos = {bx, ty + cell_size + (cell_size+2)*row + 5};
+            Vector2 siz = {cell_size, cell_size};
+            DrawRectangleV(pos, siz, ColorFromHSV((float)row*hueStep, 0.8f, 1.0f));
+        }
+        for (int row = 0; row < numTypes; ++row) {
+            for (int col = 0; col < numTypes; ++col) {
+                Vector2 pos = {bx + cell_size + (cell_size+2)*col + 5, ty + cell_size + (cell_size+2)*row + 5};
+                Vector2 siz = {cell_size, cell_size};
+                Color c = {};
+                if (minDistances[row][col] <= 0.0f) {
+                    c = ColorFromHSV(360.0f, 1.0f, 1.0f - minDistances[row][col]);
+                } else {
+                    c = ColorFromHSV(360.0f / 3.0f, 1.0f, minDistances[row][col]);
+                }
+                if (minDistances[row][col] == 0.0f) {
+                    c = BLACK;
+                }
+                if (minDistances[row][col] == -0.0f) {
+                    c = BLACK;
+                }
+                c.a = 128;
+                DrawRectangleV(pos, siz, c);
+                if (cell_row_hover == row && cell_col_hover == col) {
+                    DrawRectangleLines(pos.x-1, pos.y-1, siz.x+2, siz.y+2, WHITE);
+                }
+                if (cell_row_selected == row && cell_col_selected == col) {
+                    DrawRectangleLines(pos.x-2, pos.y-2, siz.x+4, siz.y+4, YELLOW);
+                }
+
+                sprintf(text, "%+.1f", minDistances[row][col]);
+                DrawText(text, pos.x+cell_size/2.0f - textDim, pos.y + cell_size/2.0f - textDim/3, textDim+3, BLACK);
+                DrawText(text, 2+ pos.x+cell_size/2.0f - textDim, 1+ pos.y + cell_size/2.0f - textDim/3, textDim, WHITE);
+            }
+        }
     }
+
     if(showMassesDBG) {
         ty += dy;
 
@@ -308,53 +371,62 @@ void show_DBG()
             DrawText(text, pos.x+cell_size/2.0f - textDim, pos.y + cell_size/2.0f - textDim/3, textDim+3, BLACK);
             DrawText(text, 2+ pos.x+cell_size/2.0f - textDim, 1+ pos.y + cell_size/2.0f - textDim/3, textDim, WHITE);
         }
-
-//        ty += dy;
-//        tx = bx;
-//        for (int i = 0; i < numTypes; i++) {
-//            sprintf(text, "[       ]");
-//            DrawText(text, tx, ty, textDim,
-//                        ColorFromHSV((float)i*hueStep,
-//                                     0.8f,
-//                                     1.0f));
-//            sprintf(text, "  %+.1f  ", masses[i]);
-//            DrawText(text, tx, ty, textDim,
-//                        ColorFromHSV((float)i*hueStep,
-//                                     0.8f,
-//                                     1.0f));
-//            tx += dx;
-//        }
-//        ty += dy;
-//        ty += dy;
     }
+
     if(showRadiiDBG) {
         ty += dy;
 
         sprintf(text, "radii:");
         DrawText(text, 10, ty, textDim, WHITE);
         ty += dy;
+        sprintf(text, "min: %.2f", 0.0f);
+        DrawText(text, 10, ty, textDim, WHITE);
         ty += dy;
-//        sprintf(text, "radii:");
-//        DrawText(text, 10, ty, textDim, WHITE);
-//        ty += dy;
-//        for (int i = 0; i < numTypes; i++) {
-//            tx = bx;
-//            for (int j = 0; j < numTypes; j++) {
-//                sprintf(text, "[          ]");
-//                DrawText(text, tx, ty, textDim,
-//                            ColorFromHSV((float)i*hueStep,
-//                                         0.8f,
-//                                         1.0f));
-//                sprintf(text, "  %+.1f  ", radii[i][j]);
-//                DrawText(text, tx, ty, textDim,
-//                            ColorFromHSV((float)j*hueStep,
-//                                         0.8f,
-//                                         1.0f));
-//                tx += dx;
-//            }
-//            ty += dy;
-//        }
-//        ty += dy;
+        sprintf(text, "max: %.2f", 0.3f);
+        DrawText(text, 10, ty, textDim, WHITE);
+        ty += dy;
+        ty += dy;
+
+        for (int col = 0; col < numTypes; ++col) {
+            Vector2 pos = {bx + cell_size + (cell_size+2)*col + 5, ty};
+            Vector2 siz = {cell_size, cell_size};
+            DrawRectangleV(pos, siz, ColorFromHSV((float)col*hueStep, 0.8f, 1.0f));
+        }
+        for (int row = 0; row < numTypes; ++row) {
+            Vector2 pos = {bx, ty + cell_size + (cell_size+2)*row + 5};
+            Vector2 siz = {cell_size, cell_size};
+            DrawRectangleV(pos, siz, ColorFromHSV((float)row*hueStep, 0.8f, 1.0f));
+        }
+        for (int row = 0; row < numTypes; ++row) {
+            for (int col = 0; col < numTypes; ++col) {
+                Vector2 pos = {bx + cell_size + (cell_size+2)*col + 5, ty + cell_size + (cell_size+2)*row + 5};
+                Vector2 siz = {cell_size, cell_size};
+                Color c = {};
+                if (radii[row][col] <= 0.0f) {
+                    c = ColorFromHSV(360.0f, 1.0f, 1.0f - radii[row][col]);
+                } else {
+                    c = ColorFromHSV(360.0f / 3.0f, 1.0f, radii[row][col]);
+                }
+                if (radii[row][col] == 0.0f) {
+                    c = BLACK;
+                }
+                if (radii[row][col] == -0.0f) {
+                    c = BLACK;
+                }
+                c.a = 128;
+                DrawRectangleV(pos, siz, c);
+                if (cell_row_hover == row && cell_col_hover == col) {
+                    DrawRectangleLines(pos.x-1, pos.y-1, siz.x+2, siz.y+2, WHITE);
+                }
+                if (cell_row_selected == row && cell_col_selected == col) {
+                    DrawRectangleLines(pos.x-2, pos.y-2, siz.x+4, siz.y+4, YELLOW);
+                }
+
+                sprintf(text, "%+.1f", radii[row][col]);
+                DrawText(text, pos.x+cell_size/2.0f - textDim, pos.y + cell_size/2.0f - textDim/3, textDim+3, BLACK);
+                DrawText(text, 2+ pos.x+cell_size/2.0f - textDim, 1+ pos.y + cell_size/2.0f - textDim/3, textDim, WHITE);
+            }
+        }
     }
 }
 
@@ -368,8 +440,14 @@ void processInputs()
         randomizeParticles(swarm);
     }
     if(IsKeyPressed(KEY_RIGHT_CONTROL)) {
-        zeroParticlesForces();
-        zeroParticlesMasses();
+        if (showForcesDBG)
+            zeroParticlesForces();
+        if (showMassesDBG)
+            zeroParticlesMasses();
+        if (showMinDistancesDBG)
+            zeroParticlesMinDistances();
+        if (showRadiiDBG)
+            zeroParticlesRadii();
     }
     if (IsMouseButtonPressed(MOUSE_BUTTON_MIDDLE)) {
         offset = (Vector2){ 0, 0 };
@@ -388,6 +466,7 @@ void processInputs()
     if(IsKeyPressed(KEY_SPACE)) {
         forces = makeRandomMatrix();
         randomizeMasses();
+        randomizeMinDistances();
 //        dt = 0.02f;
     }
     if(IsKeyPressed(KEY_P)) {
@@ -441,12 +520,20 @@ void processInputs()
     if(IsKeyPressed(KEY_UP)) {
         if (showForcesDBG)
             forces[cell_row_hover][cell_col_hover] += 0.1f;
+        if (showMinDistancesDBG)
+            minDistances[cell_row_hover][cell_col_hover] += 0.1f;
+        if (showRadiiDBG)
+            radii[cell_row_hover][cell_col_hover] += 0.1f;
         if (showMassesDBG)
             masses[cell_col_hover] += 0.1f;
     }
     if(IsKeyPressed(KEY_DOWN)) {
         if (showForcesDBG)
             forces[cell_row_hover][cell_col_hover] -= 0.1f;
+        if (showMinDistancesDBG)
+            minDistances[cell_row_hover][cell_col_hover] -= 0.1f;
+        if (showRadiiDBG)
+            radii[cell_row_hover][cell_col_hover] -= 0.1f;
         if (showMassesDBG)
             masses[cell_col_hover] -= 0.1f;
     }
@@ -503,10 +590,10 @@ void updatePanZoom()
     Vector2 mouseWorld_AfterZoom = {};;
     mouseWorld_AfterZoom = ScreenToWorld(mouse_scren);
     offset = Vector2Add(
-            offset,
-            Vector2Subtract(
-                    mouseWorld_BeforeZoom,
-                    mouseWorld_AfterZoom));
+                offset,
+                Vector2Subtract(
+                        mouseWorld_BeforeZoom,
+                        mouseWorld_AfterZoom));
 }
 
 void initPanZoom(Vector2 pan, Vector2 sca)
@@ -551,27 +638,26 @@ float** makeRandomMatrix()
     return rows;
 }
 
-float force(float r, float a)
+float force(float beta, float r, float a)
 {
-    float beta = 0.3;
     if (r < beta) {
-        return r / beta - 1;
-    } else if (beta < r && r < 1) {
-        return a * (1 - fabsf(2 * r - 1 - beta) / (1 - beta));
+        return r / beta - 1.0f;
+    } else if (beta < r && r < 1.0f) {
+        return a * (1.0f - fabsf(2.0f * r - 1.0f - beta) / (1.0f - beta));
     } else {
-        return 0;
+        return 0.0f;
     }
 }
 
-#undef FOECR_EASE // experimental
+#undef FORCE_EASE // experimental
 void updateParticles(particle *this)
 {
-#ifdef FOECR_EASE
+#ifdef FORCE_EASE
     float totalVelocity_len_max = 0.0f;
     float totalVelocity_len_min = FLT_MAX;
     float totalVelocity_len = 0.0f;
     float DT = 0.0f;
-#endif /* FOECR_EASE */
+#endif /* FORCE_EASE */
 
     Vector2 totalForce = Vector2Zero();
     Vector2 totalVelocity = Vector2Zero();
@@ -598,9 +684,9 @@ void updateParticles(particle *this)
             }
 
             float r = sqrt(rv.x*rv.x + rv.y*rv.y);
-            if (r <= rMax) {
-                if (r > 0 && r < rMax) {
-                    float f = force(r / rMax, forces[this[i].type][this[j].type]);
+            if (r <= maxRadius) {
+                if (r > 0 && r < maxRadius) {
+                    float f = force(minDistances[this[i].type][this[j].type], r / maxRadius, forces[this[i].type][this[j].type]);
                     //totalForce += rv / r * f;
                     Vector2 v = Vector2Scale(rv, 1.0f / r);
                     v = Vector2Scale(v, f);
@@ -609,7 +695,7 @@ void updateParticles(particle *this)
             }
         }
 
-        totalForce = Vector2Scale(totalForce, rMax * forceFactor);
+        totalForce = Vector2Scale(totalForce, maxRadius * forceFactor);
 
         this[i].velocity = Vector2Scale(this[i].velocity, frictionFactor);
 
@@ -669,7 +755,6 @@ void updateParticles(particle *this)
 #endif /* FOECR_EASE */
 
     for (int i = 0; i < numParticles; i++) {
-
         Vector2 v = Vector2Scale(this[i].velocity, dt);
         this[i].position = Vector2Add(this[i].position, v);
 
@@ -692,7 +777,7 @@ void drawParticles(particle *this)
         Color col = ColorFromHSV(this[i].type*hueStep, 1.0f, 1.0);
         Vector2 world = {screenX, screenY};
 //        DrawPixelV(WorldToScreen(world), col);
-        float r = 2.0f * Vector2Length(scale);
+        float r = 1.0f * Vector2Length(scale);
         r = r > 1.0f ? r : 1.0f;
         DrawCircleV(WorldToScreen(world), r, col);
     }
@@ -718,8 +803,9 @@ int main(int argc, char *argv[])
     numTypes = 6;
     dt = 0.02f;
     frictionHalfLife = 0.040f;
-    rMax = 100.0f;
-    minParticleMass = 0.1f;
+    minRadius = 50;
+    maxRadius = 150;
+    minParticleMass = 0.001f;
     maxParticleMass = 2.0f;
     forces = makeRandomMatrix();
     forceFactor = 1.0f;
@@ -751,13 +837,32 @@ int main(int argc, char *argv[])
     cell_row_selected = -1;
     cell_col_selected = -1;
 
-    arrsetlen(swarm, numParticles);
-    swarm_len = numParticles;
-
+    minDistances = NULL;
+    arrsetlen(minDistances, numTypes);
+    for (int i = 0; i < numTypes; ++i) {
+        minDistances[i] = NULL;
+        arrsetlen(minDistances[i], numTypes);
+        for (int j = 0; j < numTypes; ++j) {
+            minDistances[i][j] = map(random_range(0.0f, minRadius), 0.0f, minRadius, 0.0f, minRadius/maxRadius);
+        }
+    }
+    radii = NULL;
+    arrsetlen(radii, numTypes);
+    for (int i = 0; i < numTypes; ++i) {
+        radii[i] = NULL;
+        arrsetlen(radii[i], numTypes);
+        for (int j = 0; j < numTypes; ++j) {
+            radii[i][j] = random_range(0.3f, 1.0f);
+        }
+    }
     arrsetlen(masses, numTypes);
     for (int i = 0; i < numTypes; ++i) {
         masses[i] = random_range(minParticleMass, maxParticleMass);
     }
+
+    arrsetlen(swarm, numParticles);
+    swarm_len = numParticles;
+
     for (int i = 0; i < swarm_len; ++i) {
         swarm[i].mass = masses[swarm[i].type];
     }
@@ -770,7 +875,7 @@ int main(int argc, char *argv[])
     //---------------------------------------------------------------------------------------
 
     InitWindow(WIDTH, HEIGHT, "Particle Life");
-    SetWindowState(FLAG_FULLSCREEN_MODE);
+//    SetWindowState(FLAG_FULLSCREEN_MODE);
     SetTargetFPS(30);
     //--------------------------------------------------------------------------------------
 
@@ -788,7 +893,7 @@ int main(int argc, char *argv[])
         if (!pause)
             updateParticles(swarm);
 
-        if (showForcesDBG || showMassesDBG) {
+        if (showForcesDBG || showMinDistancesDBG || showRadiiDBG || showMassesDBG) {
             Vector2 mouse_pos = GetMousePosition();
 
             cell_row_hover = (mouse_pos.y - ty - cell_size - 5) / (cell_size+2);

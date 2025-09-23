@@ -35,8 +35,5 @@ float map(float input, float input_start, float input_end, float output_start, f
 
 float random_range(float min, float max)
 {
-    float ret = 0.0f;
-    float r = drand48();
-    ret = r * (max - min) + min;
-    return ret;
+    return drand48() * (max - min) + min;
 }
