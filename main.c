@@ -777,9 +777,11 @@ void drawParticles(particle *this)
         Color col = ColorFromHSV(this[i].type*hueStep, 1.0f, 1.0);
         Vector2 world = {screenX, screenY};
 //        DrawPixelV(WorldToScreen(world), col);
-        float r = 1.0f * Vector2Length(scale);
+        float r = 2.0f * Vector2Length(scale);
         r = r > 1.0f ? r : 1.0f;
-        DrawCircleV(WorldToScreen(world), r, col);
+        world = WorldToScreen(world);
+        DrawRectangle(world.x, world.y, r, r, col);
+        //DrawCircleV(WorldToScreen(world), r, col);
     }
 }
 
