@@ -37,3 +37,20 @@ float random_range(float min, float max)
 {
     return drand48() * (max - min) + min;
 }
+
+// helper random
+extern unsigned int rnd_state;
+float frand()
+{
+    rnd_state = rnd_state * 1664525u + 1013904223u;
+    return (rnd_state & 0x00FFFFFF) / (float)0x01000000;
+}
+
+// clamp wrap into [0,1)
+float wrap01(float v)
+{
+    if (v >= 1.0f) v -= floorf(v);
+    if (v < 0.0f) v -= floorf(v);
+    return v;
+}
+

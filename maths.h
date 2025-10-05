@@ -11,6 +11,7 @@ Vector2 ScreenToWorld(Vector2 screen);
 float function (float x);
 float map(float input, float input_start, float input_end, float output_start, float output_end);
 float random_range(float min, float max);
+float frand();
 
 
 #endif /* MATHS_H_ */
