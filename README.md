@@ -1,11 +1,13 @@
-# qt_yapl
+# kd_yapl
 
 more or less from scratch.
 
-watch out, "quad-trees" ahead.
+k-d tree variant.
 
-bad choice of structure, or bad implementation.
+better choice of structure, or better implementation.
 
-it works(?) but you can't have a precise interaction between single particles, since the forces are accumulated per cell.
+seems to be working and it actually speeds things up.
 
-maybe k-d trees...
+but there are probably better ways to do this.
+
+compile with gcc main.c maths.c sim.c kd.c -o kd_yapl -lm -lraylib

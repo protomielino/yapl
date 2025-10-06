@@ -9,7 +9,7 @@ extern Vector2 scale;
 Vector2 WorldToScreen(Vector2 world)
 {
     Vector2 screen = Vector2Multiply(Vector2Subtract(world, offset), scale);
-    screen = (Vector2) { (int)screen.x, (int)screen.y};
+    screen = (Vector2) { screen.x, screen.y };
     return screen;
 }
 
@@ -52,5 +52,10 @@ float wrap01(float v)
     if (v >= 1.0f) v -= floorf(v);
     if (v < 0.0f) v -= floorf(v);
     return v;
+}
+
+float randf()
+{
+    return (float)rand() / (float)RAND_MAX;
 }
 
