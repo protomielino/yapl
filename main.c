@@ -69,6 +69,24 @@ void showHelp()
         sprintf(text, "[d] show/hide tree");
         DrawText(text, 10, ty, textDim, WHITE);
         ty += dy;
+        sprintf(text, "[p] pause");
+        DrawText(text, 10, ty, textDim, WHITE);
+        ty += dy;
+        sprintf(text, "[r] randomize pos & vel");
+        DrawText(text, 10, ty, textDim, WHITE);
+        ty += dy;
+        sprintf(text, "[c] randomize colors");
+        DrawText(text, 10, ty, textDim, WHITE);
+        ty += dy;
+        sprintf(text, "[m] randomize masses");
+        DrawText(text, 10, ty, textDim, WHITE);
+        ty += dy;
+        sprintf(text, "[SPACE] randomize forces matrix");
+        DrawText(text, 10, ty, textDim, WHITE);
+        ty += dy;
+        sprintf(text, "[a] randomize all");
+        DrawText(text, 10, ty, textDim, WHITE);
+        ty += dy;
         ty += dy;
     }
 }
@@ -170,12 +188,12 @@ void initHUD()
     dx = textDim;
 }
 
-// -------------------- configuration (match JS defaults) --------------------
+// -------------------- configuration --------------------
 const int DEFAULT_N = 1000;
-const float DEFAULT_DT = 0.02f;
+const float DEFAULT_DT = 0.01f;
 const float DEFAULT_FRICTION_HALF_LIFE = 0.040f;
-const float DEFAULT_RMAX = 0.25f;
-const int DEFAULT_M = 3;
+const float DEFAULT_RMAX = 0.1f;
+const int DEFAULT_M = 6;
 const float FORCE_FACTOR = 10.0f;
 
 // add periodic world size (positions are in [0,1] space; world wraps at 0/1)
@@ -197,13 +215,16 @@ void draw_line_world(float x1, float y1, float x2, float y2)
     Color c = WHITE; c.a = 32;
     DrawLine(v1.x, v1.y, v2.x, v2.y, c);
 }
-void draw_particle_world(float x, float y, float size, int color)
+void draw_particle_world(float x, float y, float size, int color, float mass)
 {
     Color c = ColorFromHSV(360.0f / DEFAULT_M * color, 1.0f, 1.0f);
     Vector2 v = { x * WIDTH, y * HEIGHT };
     v = WorldToScreen(v);
-    DrawPixelV(v, c);
-//    DrawCircleV(v, size, c);
+//    DrawPixelV(v, c);
+    float radius = fmaxf(0.5, mass * 1.5); // tweak
+    radius *= scale.x;
+    radius = radius >= 1.0f ? radius*0.75f : 0.75f;
+    DrawCircleLines(v.x, v.y, radius, c);
 }
 
 unsigned int rnd_state;
@@ -216,7 +237,7 @@ int main(int argc, char *argv[])
 
     // Initialization
 
-    sim* s = sim_create(DEFAULT_N, DEFAULT_M, DEFAULT_DT, DEFAULT_FRICTION_HALF_LIFE, DEFAULT_RMAX, FORCE_FACTOR);
+    sim *s = sim_create(DEFAULT_N, DEFAULT_M, DEFAULT_DT, DEFAULT_FRICTION_HALF_LIFE, DEFAULT_RMAX, FORCE_FACTOR);
 
     // Initialise offset so 0,0 top left of the screen
     initPanZoom(Vector2Zero(), Vector2One());
@@ -237,6 +258,25 @@ int main(int argc, char *argv[])
 
         updatePanZoom();
         processInputs();
+
+        if(IsKeyPressed(KEY_A)) {
+            sim_randomize_all(s, 0.5f, 2.0f);
+        }
+        if(IsKeyPressed(KEY_SPACE)) {
+            sim_randomize_matrix(s);
+        }
+        if(IsKeyPressed(KEY_M)) {
+            sim_randomize_masses(s, 0.5f, 2.0f);
+        }
+        if(IsKeyPressed(KEY_R)) {
+            sim_randomize_positions(s);
+        }
+        if(IsKeyPressed(KEY_C)) {
+            sim_randomize_colors(s);
+        }
+        if(IsKeyPressed(KEY_P)) {
+            s->dt = s->dt == DEFAULT_DT ? 0.0f : DEFAULT_DT;
+        }
 
         frameCounter++;
         //----------------------------------------------------------------------------------

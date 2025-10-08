@@ -17,7 +17,7 @@ extern const int HEIGHT;
 extern const int DEFAULT_M;
 
 // -------------------- drawing API --------------------
-extern void draw_particle_world(float x, float y, float size, int color);
+extern void draw_particle_world(float x, float y, float size, int color, float mass);
 
 static inline float force_law(float r, float a)
 {
@@ -83,6 +83,7 @@ sim* sim_create(int n, int m, float dt, float friction_half_life, float rmax, fl
     s->posy = NULL;
     s->velx = NULL;
     s->vely = NULL;
+    s->masses = NULL;
     s->matrix = (float*)malloc(sizeof(float) * m * m);
 
     arrsetlen(s->colors, n);
@@ -90,6 +91,7 @@ sim* sim_create(int n, int m, float dt, float friction_half_life, float rmax, fl
     arrsetlen(s->posy, n);
     arrsetlen(s->velx, n);
     arrsetlen(s->vely, n);
+    arrsetlen(s->masses, n); // massa per particella
 
     if (USE_PERIODIC) {
         s->neighbor_mark = (int*)calloc(n, sizeof(int));
@@ -97,19 +99,16 @@ sim* sim_create(int n, int m, float dt, float friction_half_life, float rmax, fl
         s->neighbor_mark = NULL;
     }
 
-    for (int i = 0; i < n; ++i) {
-        s->colors[i] = (int)(randf() * m);
-        s->posx[i] = randf() * WORLD_SIZE;
-        s->posy[i] = randf() * WORLD_SIZE;
-        s->velx[i] = 0.0f;
-        s->vely[i] = 0.0f;
-    }
+    sim_randomize_colors(s);
+    sim_randomize_positions(s);
+    sim_randomize_masses(s, 0.5f, 2.0f);
+
     for (int i = 0; i < m*m; ++i)
         s->matrix[i] = randf() * 2.0f - 1.0f;
     return s;
 }
 
-void sim_free(sim* s)
+void sim_free(sim *s)
 {
     if (!s)
         return;
@@ -118,6 +117,7 @@ void sim_free(sim* s)
     arrfree(s->posy);
     arrfree(s->velx);
     arrfree(s->vely);
+    arrfree(s->masses);
     if (s->matrix)
         free(s->matrix);
     if (s->neighbor_mark)
@@ -125,7 +125,7 @@ void sim_free(sim* s)
     free(s);
 }
 
-void sim_update(sim* s)
+void sim_update(sim *s)
 {
     if (!s || s->n <= 0)
         return;
@@ -176,11 +176,16 @@ void sim_update(sim* s)
         totalForceX *= s->rmax * s->forceFactor;
         totalForceY *= s->rmax * s->forceFactor;
 
+        // applica attrito (moltiplica velocità)
         s->velx[i] *= s->frictionFactor;
         s->vely[i] *= s->frictionFactor;
 
-        s->velx[i] += totalForceX * s->dt;
-        s->vely[i] += totalForceY * s->dt;
+        // accelerazione = F / m
+        float ax = totalForceX / s->masses[i];
+        float ay = totalForceY / s->masses[i];
+
+        s->velx[i] += ax * s->dt;
+        s->vely[i] += ay * s->dt;
 
         arrfree(neighbors);
     }
@@ -212,16 +217,16 @@ void sim_update(sim* s)
     CURRENT_SIM_INSTANCE = NULL;
 }
 
-void sim_draw_frame(sim* s)
+void sim_draw_frame(sim *s)
 {
     if (!s)
         return;
     for (int i = 0; i < s->n; ++i) {
-        draw_particle_world(s->posx[i], s->posy[i], 1.5f, s->colors[i]);
+        draw_particle_world(s->posx[i], s->posy[i], 1.5f, s->colors[i], s->masses[i]);
     }
 }
 
-void sim_get_positions(sim* s, float* out_x, float* out_y, int* out_colors)
+void sim_get_positions(sim *s, float* out_x, float* out_y, int* out_colors)
 {
     if (!s)
         return;
@@ -229,5 +234,44 @@ void sim_get_positions(sim* s, float* out_x, float* out_y, int* out_colors)
         if (out_x) out_x[i] = s->posx[i];
         if (out_y) out_y[i] = s->posy[i];
         if (out_colors) out_colors[i] = s->colors[i];
+    }
+}
+
+void sim_randomize_all(sim *s, float min_mass, float max_mass)
+{
+    sim_randomize_matrix(s);
+    sim_randomize_masses(s, min_mass, max_mass);
+    sim_randomize_positions(s);
+    sim_randomize_colors(s);
+}
+
+void sim_randomize_matrix(sim *s)
+{
+    for (int i = 0; i < s->m*s->m; ++i)
+        s->matrix[i] = randf() * 2.0f - 1.0f;
+}
+
+void sim_randomize_masses(sim *s, float min_mass, float max_mass)
+{
+    for(int i = 0; i < s->n; i++) {
+        s->masses[i] = random_range(min_mass, max_mass);
+    }
+}
+
+void sim_randomize_positions(sim *s)
+{
+    for(int i = 0; i < s->n; i++) {
+        s->posx[i] = drand48()*WIDTH;
+        s->posy[i] = drand48()*HEIGHT;
+        s->velx[i] = 0.0f;
+        s->vely[i] = 0.0f;
+    }
+}
+
+void sim_randomize_colors(sim *s)
+{
+    for(int i = 0; i < s->n; i++) {
+        s->colors[i] = floorf(drand48() * s->m);
+//        s->masses[i] = s->masses[s->colors[i]];
     }
 }
