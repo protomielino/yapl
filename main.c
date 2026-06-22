@@ -16,7 +16,9 @@
 
 #include "maths.h"
 
-#include "kd.h"
+#ifndef USE_GRID
+#define USE_GRID 1
+#endif
 #include "sim.h"
 
 const int WIDTH  = 700;
@@ -41,6 +43,33 @@ bool show_help;
 bool show_HUD;
 bool show_tree;
 
+bool showForcesDBG;
+bool showMinDistancesDBG;
+bool showMassesDBG;
+bool showRadiiDBG;
+
+float cell_size;
+int cell_row_hover;
+int cell_col_hover;
+int cell_row_selected;
+int cell_col_selected;
+
+// -------------------- configuration --------------------
+const int DEFAULT_N = 1000;
+const float DEFAULT_DT = 0.01f;
+const float DEFAULT_FRICTION_HALF_LIFE = 0.040f;
+const float DEFAULT_RMAX = 0.1f;
+const int DEFAULT_M = 6;
+const float FORCE_FACTOR = 10.0f;
+
+const int USE_PERIODIC = 1;
+
+#if !USE_GRID
+int KD_CURRENT_POINT_COUNT = 0;
+sim *CURRENT_SIM_INSTANCE = NULL;
+#endif
+const float WORLD_SIZE = 1.0f;
+
 void showHUD()
 {
     if(show_HUD) {
@@ -51,6 +80,9 @@ void showHUD()
         DrawText(text, 10, ty, textDim, WHITE);
         ty += dy;
         sprintf(text, "scale: {%.2f, %.2f} [WHEEL]", scale.x, scale.y);
+        DrawText(text, 10, ty, textDim, WHITE);
+        ty += dy;
+        sprintf(text, "backend: %s", USE_GRID ? "grid" : "k-d tree");
         DrawText(text, 10, ty, textDim, WHITE);
         ty += dy;
         ty += dy;
@@ -69,22 +101,25 @@ void showHelp()
         sprintf(text, "[d] show/hide tree");
         DrawText(text, 10, ty, textDim, WHITE);
         ty += dy;
-        sprintf(text, "[p] pause");
+        sprintf(text, "[p] pause / unpause");
         DrawText(text, 10, ty, textDim, WHITE);
         ty += dy;
-        sprintf(text, "[r] randomize pos & vel");
+        sprintf(text, "[r] randomize positions");
         DrawText(text, 10, ty, textDim, WHITE);
         ty += dy;
-        sprintf(text, "[c] randomize colors");
+        sprintf(text, "[SPACE] randomize all");
         DrawText(text, 10, ty, textDim, WHITE);
         ty += dy;
-        sprintf(text, "[m] randomize masses");
+        sprintf(text, "[z,x,c,v] forces, minDist, masses, radii");
         DrawText(text, 10, ty, textDim, WHITE);
         ty += dy;
-        sprintf(text, "[SPACE] randomize forces matrix");
+        sprintf(text, "[arrows] edit selected cell");
         DrawText(text, 10, ty, textDim, WHITE);
         ty += dy;
-        sprintf(text, "[a] randomize all");
+        sprintf(text, "[CTRL+click] select cell");
+        DrawText(text, 10, ty, textDim, WHITE);
+        ty += dy;
+        sprintf(text, "[CTRL+right-click] zero active panel");
         DrawText(text, 10, ty, textDim, WHITE);
         ty += dy;
         ty += dy;
@@ -94,12 +129,12 @@ void showHelp()
 void processInputs()
 {
     if(IsKeyDown(KEY_R) && IsKeyDown(KEY_LEFT_SHIFT)) {
-        offset = Vector2Zero(); //(Vector2){-WIDTH/2.0f, -HEIGHT/2.0f};
+        offset = Vector2Zero();
         offset = Vector2Divide(offset, scale);
         scale = Vector2One();
     }
     if (IsMouseButtonPressed(MOUSE_BUTTON_MIDDLE)) {
-        offset = Vector2Zero(); //(Vector2){-WIDTH/2.0f, -HEIGHT/2.0f};
+        offset = Vector2Zero();
         offset = Vector2Divide(offset, scale);
     }
     if(IsKeyPressed(KEY_D)) {
@@ -111,42 +146,52 @@ void processInputs()
     if(IsKeyPressed(KEY_H) && !IsKeyDown(KEY_LEFT_SHIFT)) {
         show_help = !show_help;
     }
+    if(IsKeyPressed(KEY_Z)) {
+        showForcesDBG = !showForcesDBG;
+        showMinDistancesDBG = false;
+        showMassesDBG = false;
+        showRadiiDBG = false;
+    }
+    if(IsKeyPressed(KEY_X)) {
+        showForcesDBG = false;
+        showMinDistancesDBG = !showMinDistancesDBG;
+        showMassesDBG = false;
+        showRadiiDBG = false;
+    }
+    if(IsKeyPressed(KEY_C)) {
+        showForcesDBG = false;
+        showMinDistancesDBG = false;
+        showMassesDBG = !showMassesDBG;
+        showRadiiDBG = false;
+    }
+    if(IsKeyPressed(KEY_V)) {
+        showForcesDBG = false;
+        showMinDistancesDBG = false;
+        showMassesDBG = false;
+        showRadiiDBG = !showRadiiDBG;
+    }
 }
 
 void updatePanZoom()
 {
-    //----------------------------------------------------------------------------------
-    // pan-zoom
-    //----------------------------------------------------------------------------------
-    // Just grab a copy of mouse coordinates for convenience
     mouse_screen = (Vector2){ (float)GetMouseX(), (float)GetMouseY() };
     mouse_world = ScreenToWorld(mouse_screen);
 
-    // For panning, we need to capture the screen location when the user starts
-    // to pan...
     if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
         startPan = mouse_screen;
     }
-
-    // ...as the mouse moves, the screen location changes. Convert this screen
-    // coordinate change into world coordinates to implement the pan. Simples.
     if (IsMouseButtonDown(MOUSE_BUTTON_LEFT)) {
         offset = Vector2Subtract(
                 offset,
                 Vector2Divide(
                         Vector2Subtract(mouse_screen, startPan),
                                 scale));
-
-        // Start "new" pan for next epoch
         startPan = mouse_screen;
     }
 
-    // For zoom, we need to extract the location of the cursor before and after the
-    // scale is changed. Here we get the cursor and translate into world space...
     Vector2 mouseWorld_BeforeZoom = {};
     mouseWorld_BeforeZoom = ScreenToWorld(mouse_screen);
 
-    // ...change the scale as required...
     if (GetMouseWheelMove() > 0) {
         scale.x *= 1.1f;
         scale.y *= 1.1f;
@@ -155,11 +200,7 @@ void updatePanZoom()
         scale.y *= 0.9f;
     }
 
-    // ...now get the location of the cursor in world space again - It will have changed
-    // because the scale has changed, but we can offset our world now to fix the zoom
-    // location in screen space, because we know how much it changed laterally between
-    // the two spatial scales. Neat huh? ;-)
-    Vector2 mouseWorld_AfterZoom = {};;
+    Vector2 mouseWorld_AfterZoom = {};
     mouseWorld_AfterZoom = ScreenToWorld(mouse_screen);
     offset = Vector2Add(
             offset,
@@ -171,39 +212,25 @@ void updatePanZoom()
 void initPanZoom(Vector2 pan, Vector2 sca)
 {
     startPan = pan;
-
-    offset = Vector2Zero(); //(Vector2){-WIDTH/2.0f, -HEIGHT/2.0f};
+    offset = Vector2Zero();
     scale = sca;
 }
 
 void initHUD()
 {
     textDim = 20;
-
     by = 50;
     ty = by;
     dy = textDim;
     bx = 10;
     tx = bx;
     dx = textDim;
+    cell_size = 50.0f;
+    cell_row_hover = 0;
+    cell_col_hover = 0;
+    cell_row_selected = -1;
+    cell_col_selected = -1;
 }
-
-// -------------------- configuration --------------------
-const int DEFAULT_N = 1000;
-const float DEFAULT_DT = 0.01f;
-const float DEFAULT_FRICTION_HALF_LIFE = 0.040f;
-const float DEFAULT_RMAX = 0.1f;
-const int DEFAULT_M = 6;
-const float FORCE_FACTOR = 10.0f;
-
-// add periodic world size (positions are in [0,1] space; world wraps at 0/1)
-const int USE_PERIODIC = 1; // 1 = wrap (periodic), 0 = no wrap (original clamp behavior)
-const float WORLD_SIZE = 1.0f; // domain size in both x and y (positions remain in [0,WORLD_SIZE))
-
-int KD_CURRENT_POINT_COUNT = 0;
-
-// pointer set by sim_update before queries to allow kd_query_radius to access mark buffer
-sim *CURRENT_SIM_INSTANCE = NULL;
 
 // -------------------- drawing API --------------------
 void draw_line_world(float x1, float y1, float x2, float y2)
@@ -215,77 +242,250 @@ void draw_line_world(float x1, float y1, float x2, float y2)
     Color c = WHITE; c.a = 32;
     DrawLine(v1.x, v1.y, v2.x, v2.y, c);
 }
+
 void draw_particle_world(float x, float y, float size, int color, float mass)
 {
+    (void)size;
     Color c = ColorFromHSV(360.0f / DEFAULT_M * color, 1.0f, 1.0f);
     Vector2 v = { x * WIDTH, y * HEIGHT };
     v = WorldToScreen(v);
-//    DrawPixelV(v, c);
-    float radius = fmaxf(0.5, mass * 1.5); // tweak
+    float radius = fmaxf(0.5, mass * 1.5);
     radius *= scale.x;
-    radius = radius >= 1.0f ? radius*0.75f : 0.75f;
+    radius = radius >= 1.0f ? radius * 0.75f : 0.75f;
     DrawCircleLines(v.x, v.y, radius, c);
+}
+
+// -------------------- matrix panel drawing --------------------
+static void draw_color_header(int type, float x, float y, float size)
+{
+    Color hc = ColorFromHSV(360.0f / DEFAULT_M * type, 0.8f, 1.0f);
+    DrawRectangleV((Vector2){x, y}, (Vector2){size, size}, hc);
+}
+
+static void draw_matrix_cell(float x, float y, float size, float val, float range_min, float range_max)
+{
+    float t = (val - range_min) / (range_max - range_min); // 0..1
+    Color c;
+    if (val <= 0.0f) {
+        c = ColorFromHSV(360.0f, 1.0f, 1.0f - t);
+    } else {
+        c = ColorFromHSV(360.0f / 3.0f, 1.0f, t);
+    }
+    if (val == 0.0f) c = BLACK;
+    c.a = 128;
+    DrawRectangleV((Vector2){x, y}, (Vector2){size, size}, c);
+}
+
+static void draw_cell_border(float x, float y, float size, int hover, int selected)
+{
+    if (hover) {
+        DrawRectangleLinesEx((Rectangle){x-1, y-1, size+2, size+2}, 1, WHITE);
+    }
+    if (selected) {
+        DrawRectangleLinesEx((Rectangle){x-2, y-2, size+4, size+4}, 2, YELLOW);
+    }
+}
+
+static void draw_cell_text(float x, float y, float size, const char *label)
+{
+    DrawText(label,
+        x + size / 2.0f - textDim / 2.0f,
+        y + size / 2.0f - textDim / 3.0f,
+        textDim, WHITE);
+}
+
+static void draw_matrix_panel(const char *title, float *matrix, int m,
+                               float range_min, float range_max, int is_mass_panel,
+                               sim *s)
+{
+    ty += dy;
+    sprintf(text, "%s:", title);
+    DrawText(text, 10, ty, textDim, WHITE);
+    ty += dy;
+    sprintf(text, "min: %.2f", range_min);
+    DrawText(text, 10, ty, textDim, WHITE);
+    ty += dy;
+    sprintf(text, "max: %.2f", range_max);
+    DrawText(text, 10, ty, textDim, WHITE);
+    ty += dy;
+    ty += dy;
+
+    // column headers
+    for (int col = 0; col < m; ++col) {
+        draw_color_header(col, bx + cell_size + (cell_size + 2) * col + 5, ty, cell_size);
+    }
+
+    if (!is_mass_panel) {
+        // row headers + grid
+        for (int row = 0; row < m; ++row) {
+            float ry = ty + cell_size + (cell_size + 2) * row + 5;
+            draw_color_header(row, bx, ry, cell_size);
+        }
+    }
+
+    // cells
+    int nrows = is_mass_panel ? 1 : m;
+    for (int row = 0; row < nrows; ++row) {
+        for (int col = 0; col < m; ++col) {
+            float cx = bx + cell_size + (cell_size + 2) * col + 5;
+            float cy = ty + cell_size + (cell_size + 2) * row + 5;
+
+            float val;
+            if (is_mass_panel) {
+                // compute average mass for this type from particle data
+                float sum = 0;
+                int cnt = 0;
+                for (int i = 0; i < s->n; ++i) {
+                    if (s->colors[i] == col) {
+                        sum += s->masses[i];
+                        cnt++;
+                    }
+                }
+                val = cnt > 0 ? sum / cnt : 0.0f;
+            } else {
+                val = matrix[row * m + col];
+            }
+
+            draw_matrix_cell(cx, cy, cell_size, val, range_min, range_max);
+
+            int hover = 0, sel = 0;
+            if (!is_mass_panel) {
+                hover = (cell_row_hover == row && cell_col_hover == col);
+                sel = (cell_row_selected == row && cell_col_selected == col);
+            } else {
+                hover = (cell_col_hover == col);
+                sel = (cell_col_selected == col);
+            }
+            draw_cell_border(cx, cy, cell_size, hover, sel);
+
+            sprintf(text, "%.2f", val);
+            draw_cell_text(cx, cy, cell_size, text);
+        }
+    }
+}
+
+static void handle_mouse_hover(int ty_now)
+{
+    Vector2 mp = GetMousePosition();
+    cell_col_hover = (mp.x - bx - cell_size - 5) / (cell_size + 2);
+    cell_row_hover = (mp.y - ty_now - cell_size - 5) / (cell_size + 2);
+
+    cell_col_hover = (cell_col_hover < 0) ? 0 : (cell_col_hover >= DEFAULT_M ? DEFAULT_M - 1 : cell_col_hover);
+    cell_row_hover = (cell_row_hover < 0) ? 0 : (cell_row_hover >= DEFAULT_M ? DEFAULT_M - 1 : cell_row_hover);
+}
+
+static void handle_cell_edit(sim *s, float delta)
+{
+    if (showForcesDBG) {
+        int idx = cell_row_selected * s->m + cell_col_selected;
+        s->matrix[idx] += delta;
+        if (s->matrix[idx] < -1.0f) s->matrix[idx] = -1.0f;
+        if (s->matrix[idx] > 1.0f) s->matrix[idx] = 1.0f;
+    }
+    if (showMinDistancesDBG) {
+        int idx = cell_row_selected * s->m + cell_col_selected;
+        s->min_dist_matrix[idx] += delta;
+        if (s->min_dist_matrix[idx] < 0.0f) s->min_dist_matrix[idx] = 0.0f;
+        if (s->min_dist_matrix[idx] > 1.0f) s->min_dist_matrix[idx] = 1.0f;
+    }
+    if (showMassesDBG) {
+        // apply to all particles of selected type
+        for (int i = 0; i < s->n; ++i) {
+            if (s->colors[i] == cell_col_selected) {
+                s->masses[i] += delta;
+                if (s->masses[i] < 0.01f) s->masses[i] = 0.01f;
+            }
+        }
+    }
+    if (showRadiiDBG) {
+        int idx = cell_row_selected * s->m + cell_col_selected;
+        s->radii_matrix[idx] += delta;
+        if (s->radii_matrix[idx] < 0.0f) s->radii_matrix[idx] = 0.0f;
+        if (s->radii_matrix[idx] > 1.0f) s->radii_matrix[idx] = 1.0f;
+    }
+}
+
+static void zero_active_panel(sim *s)
+{
+    if (showForcesDBG) {
+        memset(s->matrix, 0, sizeof(float) * s->m * s->m);
+    }
+    if (showMinDistancesDBG) {
+        memset(s->min_dist_matrix, 0, sizeof(float) * s->m * s->m);
+    }
+    if (showMassesDBG) {
+        for (int i = 0; i < s->n; ++i) s->masses[i] = 1.0f;
+    }
+    if (showRadiiDBG) {
+        memset(s->radii_matrix, 0, sizeof(float) * s->m * s->m);
+    }
 }
 
 unsigned int rnd_state;
 
-int main(int argc, char *argv[])
+int main(void)
 {
-//    srand48(clock());
     srand((unsigned)clock());
     frameCounter = 0;
 
-    // Initialization
+    show_help = false;
+    show_HUD = false;
+    show_tree = false;
+    showForcesDBG = false;
+    showMinDistancesDBG = false;
+    showMassesDBG = false;
+    showRadiiDBG = false;
 
     sim *s = sim_create(DEFAULT_N, DEFAULT_M, DEFAULT_DT, DEFAULT_FRICTION_HALF_LIFE, DEFAULT_RMAX, FORCE_FACTOR);
 
-    // Initialise offset so 0,0 top left of the screen
     initPanZoom(Vector2Zero(), Vector2One());
     initHUD();
 
-    //---------------------------------------------------------------------------------------
-
     InitWindow(WIDTH, HEIGHT, "Particle Life");
-    //SetWindowState(FLAG_FULLSCREEN_MODE);
     SetTargetFPS(30);
-    //--------------------------------------------------------------------------------------
 
-    // Main game loop
-    while (!WindowShouldClose())    // Detect window close button or ESC key
+    while (!WindowShouldClose())
     {
-        // Update
-        //----------------------------------------------------------------------------------
-
         updatePanZoom();
         processInputs();
 
-        if(IsKeyPressed(KEY_A)) {
+        if (IsKeyPressed(KEY_A)) {
             sim_randomize_all(s, 0.5f, 2.0f);
         }
-        if(IsKeyPressed(KEY_SPACE)) {
-            sim_randomize_matrix(s);
+        if (IsKeyPressed(KEY_SPACE)) {
+            sim_randomize_all(s, 0.5f, 2.0f);
         }
-        if(IsKeyPressed(KEY_M)) {
-            sim_randomize_masses(s, 0.5f, 2.0f);
-        }
-        if(IsKeyPressed(KEY_R)) {
+        if (IsKeyPressed(KEY_R) && !IsKeyDown(KEY_LEFT_SHIFT)) {
             sim_randomize_positions(s);
         }
-        if(IsKeyPressed(KEY_C)) {
-            sim_randomize_colors(s);
-        }
-        if(IsKeyPressed(KEY_P)) {
+
+        if (IsKeyPressed(KEY_P)) {
             s->dt = s->dt == DEFAULT_DT ? 0.0f : DEFAULT_DT;
         }
 
-        frameCounter++;
-        //----------------------------------------------------------------------------------
+        // Ctrl+LeftClick to select cell
+        if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && IsKeyDown(KEY_LEFT_CONTROL)) {
+            cell_row_selected = cell_row_hover;
+            cell_col_selected = cell_col_hover;
+        }
 
-        // Draw
-        //----------------------------------------------------------------------------------
+        // Ctrl+RightClick to zero active panel
+        if (IsMouseButtonPressed(MOUSE_BUTTON_RIGHT) && IsKeyDown(KEY_LEFT_CONTROL)) {
+            zero_active_panel(s);
+        }
+
+        // Arrow key editing
+        if (IsKeyPressed(KEY_UP)) {
+            handle_cell_edit(s, 0.1f);
+        }
+        if (IsKeyPressed(KEY_DOWN)) {
+            handle_cell_edit(s, -0.1f);
+        }
+
+        frameCounter++;
+
         BeginDrawing(); {
             ClearBackground(BLACK);
-//            draw_clear_background();
 
             sim_update(s);
             sim_draw_frame(s);
@@ -293,15 +493,15 @@ int main(int argc, char *argv[])
             Vector2 cpos = Vector2Zero();
             DrawLineV(
                     WorldToScreen((Vector2){cpos.x, 0.0f}),
-                    WorldToScreen((Vector2){cpos.x, HEIGHT/2}), GREEN);
+                    WorldToScreen((Vector2){cpos.x, HEIGHT / 2}), GREEN);
             DrawLineV(
                     WorldToScreen((Vector2){0.0f, cpos.y}),
-                    WorldToScreen((Vector2){WIDTH/2, cpos.y}), RED);
-            DrawCircleLinesV(WorldToScreen(cpos), 2.5*Vector2Length(scale), WHITE);
+                    WorldToScreen((Vector2){WIDTH / 2, cpos.y}), RED);
+            DrawCircleLinesV(WorldToScreen(cpos), 2.5f * Vector2Length(scale), WHITE);
 
             sprintf(text, "[0, 0]");
             cpos = WorldToScreen(cpos);
-            DrawText(text, cpos.x+5, cpos.y+5, textDim/3*Vector2Length(scale), WHITE);
+            DrawText(text, cpos.x + 5, cpos.y + 5, textDim / 3 * Vector2Length(scale), WHITE);
 
             ty = by;
             showHUD();
@@ -310,16 +510,30 @@ int main(int argc, char *argv[])
             DrawText(text, 10, ty, textDim, WHITE);
             ty += dy;
 
+            // --- debug panels ---
+            bool any_panel = showForcesDBG || showMinDistancesDBG || showMassesDBG || showRadiiDBG;
+            if (any_panel) {
+                handle_mouse_hover(ty);
+            }
+
+            if (showForcesDBG) {
+                draw_matrix_panel("forces", s->matrix, s->m, -1.0f, 1.0f, 0, s);
+            }
+            if (showMinDistancesDBG) {
+                draw_matrix_panel("minDist", s->min_dist_matrix, s->m, 0.0f, 0.35f, 0, s);
+            }
+            if (showMassesDBG) {
+                draw_matrix_panel("masses (avg)", NULL, s->m, 0.0f, 2.5f, 1, s);
+            }
+            if (showRadiiDBG) {
+                draw_matrix_panel("radii", s->radii_matrix, s->m, 0.3f, 1.0f, 0, s);
+            }
+
             DrawFPS(20, 20);
         } EndDrawing();
-        //----------------------------------------------------------------------------------
     }
 
-    // De-Initialization
     sim_free(s);
-    //--------------------------------------------------------------------------------------
-    CloseWindow();        // Close window and OpenGL context
-    //--------------------------------------------------------------------------------------
-
+    CloseWindow();
     return 0;
 }
