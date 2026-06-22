@@ -2,9 +2,9 @@ CC      = gcc
 CFLAGS  = -Wall -Wextra -O2
 LDLIBS  = -lm -lraylib
 
-SRC = main.c maths.c sim.c grid.c kd.c
+SRC = main.c maths.c sim.c grid.c kd.c qt.c
 
-.PHONY: all run clean
+.PHONY: all run clean run-kd run-qt
 
 all: yapl
 
@@ -16,6 +16,9 @@ run: yapl
 
 run-kd: yapl
 	./yapl --backend kd
+
+run-qt: yapl
+	./yapl --backend qt
 
 clean:
 	rm -f yapl

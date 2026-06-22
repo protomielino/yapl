@@ -14,14 +14,14 @@ make clean
 ## Usage
 
 ```
-yapl [-n <count>] [-m <colors>] [--backend grid|kd]
+yapl [-n <count>] [-m <colors>] [--backend grid|kd|qt]
 ```
 
 | Argument | Default | Description |
 |---|---|---|
 | `-n` | 1000 | Number of particles |
 | `-m` | 6 | Number of colors / types |
-| `--backend` | `grid` | Spatial partition backend (`grid` or `kd`) |
+| `--backend` | `grid` | Spatial partition backend (`grid`, `kd`, or `qt`) |
 
 ## Controls
 

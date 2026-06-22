@@ -3,9 +3,10 @@
 
 typedef struct grid_s grid;
 typedef struct kd_node_s kd_node;
+typedef struct qt_s qt;
 
 typedef struct { float x, y; } vec2;
-typedef enum { BACKEND_GRID, BACKEND_KD } backend_type;
+typedef enum { BACKEND_GRID, BACKEND_KD, BACKEND_QUADTREE } backend_type;
 
 typedef struct sim_s
 {
@@ -28,6 +29,7 @@ typedef struct sim_s
     grid *grid;
     struct kd_node_s *kd_tree;
     int kd_rebuild_counter;
+    qt *qt;
 } sim;
 
 sim* sim_create(int n, int m, backend_type backend, float dt, float friction_half_life, float rmax, float forceFactor);

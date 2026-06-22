@@ -68,7 +68,10 @@ void showHUD(sim *s)
         sprintf(text, "scale: {%.2f, %.2f} [WHEEL]", scale.x, scale.y);
         DrawText(text, 10, ty, textDim, WHITE);
         ty += dy;
-        sprintf(text, "backend: %s", s->backend == BACKEND_GRID ? "grid" : "k-d tree");
+        const char *backend_name =
+            s->backend == BACKEND_GRID ? "grid" :
+            s->backend == BACKEND_KD ? "k-d tree" : "quadtree";
+        sprintf(text, "backend: %s", backend_name);
         DrawText(text, 10, ty, textDim, WHITE);
         ty += dy;
         ty += dy;
@@ -422,9 +425,10 @@ int main(int argc, char *argv[])
             i++;
             if (strcmp(argv[i], "kd") == 0) backend = BACKEND_KD;
             else if (strcmp(argv[i], "grid") == 0) backend = BACKEND_GRID;
-            else { fprintf(stderr, "Unknown backend: %s (use grid or kd)\n", argv[i]); return 1; }
+            else if (strcmp(argv[i], "qt") == 0) backend = BACKEND_QUADTREE;
+            else { fprintf(stderr, "Unknown backend: %s (use grid, kd, or qt)\n", argv[i]); return 1; }
         } else if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
-            printf("Usage: yapl [-n N] [-m M] [--backend grid|kd]\n");
+            printf("Usage: yapl [-n N] [-m M] [--backend grid|kd|qt]\n");
             return 0;
         } else {
             fprintf(stderr, "Unknown option: %s\n", argv[i]);

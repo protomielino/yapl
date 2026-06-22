@@ -6,6 +6,7 @@
 #include "sim.h"
 #include "grid.h"
 #include "kd.h"
+#include "qt.h"
 
 extern bool show_tree;
 extern const int USE_PERIODIC;
@@ -95,6 +96,7 @@ sim* sim_create(int n, int m, backend_type backend, float dt, float friction_hal
     s->grid = NULL;
     s->kd_tree = NULL;
     s->kd_rebuild_counter = 0;
+    s->qt = NULL;
     if (backend == BACKEND_GRID)
         s->grid = grid_create(rmax, WORLD_SIZE);
 
@@ -124,6 +126,8 @@ void sim_free(sim *s)
         grid_free(s->grid);
     if (s->kd_tree)
         kd_free(s->kd_tree);
+    if (s->qt)
+        qt_free(s->qt);
     free(s);
 }
 
@@ -191,6 +195,35 @@ void sim_update(sim *s)
             s->velocities[i].x += ax * s->dt;
             s->velocities[i].y += ay * s->dt;
         }
+    } else if (s->backend == BACKEND_QUADTREE) {
+        // ---- quadtree path ----
+        CURRENT_SIM_INSTANCE = s;
+
+        if (s->qt) qt_free(s->qt);
+        s->qt = qt_create(WORLD_SIZE);
+        for (int i = 0; i < s->n; ++i)
+            qt_insert(s->qt, i, s->positions[i].x, s->positions[i].y);
+
+        if (show_tree)
+            qt_draw_partitions(s->qt);
+
+        for (int i = 0; i < s->n; ++i) {
+            int n_neighbors = qt_query_radius(s->qt, s->positions[i].x, s->positions[i].y,
+                                              s->rmax, neighbors, max_neighbors);
+
+            float totalForceX, totalForceY;
+            compute_forces_for_particle(s, i, neighbors, n_neighbors, &totalForceX, &totalForceY);
+
+            s->velocities[i].x *= s->frictionFactor;
+            s->velocities[i].y *= s->frictionFactor;
+
+            float ax = totalForceX / s->masses[i];
+            float ay = totalForceY / s->masses[i];
+            s->velocities[i].x += ax * s->dt;
+            s->velocities[i].y += ay * s->dt;
+        }
+
+        CURRENT_SIM_INSTANCE = NULL;
     } else {
         // ---- k-d tree path ----
         const int KD_REBUILD_INTERVAL = 10;
