@@ -104,6 +104,9 @@ sim* sim_create(int n, int m, float dt, float friction_half_life, float rmax, fl
 
 #if USE_GRID
     s->grid = grid_create(rmax, WORLD_SIZE);
+#else
+    s->kd_tree = NULL;
+    s->kd_rebuild_counter = 0;
 #endif
 
     sim_randomize_colors(s);
@@ -131,6 +134,9 @@ void sim_free(sim *s)
 #if USE_GRID
     if (s->grid)
         grid_free(s->grid);
+#else
+    if (s->kd_tree)
+        kd_free(s->kd_tree);
 #endif
     free(s);
 }
@@ -203,26 +209,37 @@ void sim_update(sim *s)
 
 #else
     // ---- k-d tree path ----
-    kd_point *points = NULL;
-    arrsetlen(points, s->n);
-    for (int i = 0; i < s->n; ++i) {
-        points[i].x = s->positions[i].x;
-        points[i].y = s->positions[i].y;
-        points[i].index = i;
+    const int KD_REBUILD_INTERVAL = 10;
+
+    if (s->kd_rebuild_counter <= 0) {
+        if (s->kd_tree) {
+            kd_free(s->kd_tree);
+            s->kd_tree = NULL;
+        }
+        kd_point *points = NULL;
+        arrsetlen(points, s->n);
+        for (int i = 0; i < s->n; ++i) {
+            points[i].x = s->positions[i].x;
+            points[i].y = s->positions[i].y;
+            points[i].index = i;
+        }
+        s->kd_tree = kd_build(points, s->n);
+        s->kd_rebuild_counter = KD_REBUILD_INTERVAL;
+        arrfree(points);
+    } else {
+        s->kd_rebuild_counter--;
     }
 
     CURRENT_SIM_INSTANCE = s;
     KD_CURRENT_POINT_COUNT = s->n;
 
-    kd_node *tree = kd_build(points, s->n);
-
-    if (show_tree)
-        kd_draw_tree_partitions_full(tree, 0);
+    if (show_tree && s->kd_tree)
+        kd_draw_tree_partitions_full(s->kd_tree, 0);
 
     int *neighbors = NULL;
     for (int i = 0; i < s->n; ++i) {
         neighbors = NULL;
-        kd_query_radius(tree, s->positions[i].x, s->positions[i].y, s->rmax, &neighbors);
+        kd_query_radius(s->kd_tree, s->positions[i].x, s->positions[i].y, s->rmax, &neighbors);
 
         float totalForceX, totalForceY;
         compute_forces_for_particle(s, i, neighbors, arrlen(neighbors), &totalForceX, &totalForceY);
@@ -237,10 +254,6 @@ void sim_update(sim *s)
 
         arrfree(neighbors);
     }
-
-    if (tree)
-        kd_free(tree);
-    arrfree(points);
 
     CURRENT_SIM_INSTANCE = NULL;
 #endif
@@ -321,6 +334,9 @@ void sim_randomize_positions(sim *s)
         s->velocities[i].x = 0.0f;
         s->velocities[i].y = 0.0f;
     }
+#if !USE_GRID
+    s->kd_rebuild_counter = 0;
+#endif
 }
 
 void sim_randomize_colors(sim *s)

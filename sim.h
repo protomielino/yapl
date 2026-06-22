@@ -26,6 +26,9 @@ typedef struct sim_s
     int *neighbor_mark; // size n, reused across queries when USE_PERIODIC==1
 #if USE_GRID
     grid *grid;
+#else
+    struct kd_node_s *kd_tree;
+    int kd_rebuild_counter;
 #endif
 } sim;
 
