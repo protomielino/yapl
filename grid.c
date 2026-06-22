@@ -1,11 +1,19 @@
 #include <stdlib.h>
 #include <math.h>
 
-#include "stb_ds.h"
 #include "grid.h"
 
 extern void draw_line_world(float x1, float y1, float x2, float y2);
 extern const float WORLD_SIZE;
+
+static void int_array_push(int_array *a, int val)
+{
+    if (a->count >= a->capacity) {
+        a->capacity = a->capacity ? a->capacity * 2 : 8;
+        a->data = (int*)realloc(a->data, a->capacity * sizeof(int));
+    }
+    a->data[a->count++] = val;
+}
 
 grid* grid_create(float cell_size, float world_size)
 {
@@ -14,7 +22,7 @@ grid* grid_create(float cell_size, float world_size)
     g->ncells = (int)ceilf(world_size * g->inv_cell_size);
     if ((float)g->ncells * cell_size < world_size)
         g->ncells++;
-    g->cells = (int**)calloc(g->ncells * g->ncells, sizeof(int*));
+    g->cells = (int_array*)calloc(g->ncells * g->ncells, sizeof(int_array));
     return g;
 }
 
@@ -22,10 +30,8 @@ void grid_free(grid *g)
 {
     if (!g) return;
     int total = g->ncells * g->ncells;
-    for (int i = 0; i < total; i++) {
-        if (g->cells[i])
-            arrfree(g->cells[i]);
-    }
+    for (int i = 0; i < total; i++)
+        free(g->cells[i].data);
     free(g->cells);
     free(g);
 }
@@ -33,10 +39,8 @@ void grid_free(grid *g)
 void grid_clear(grid *g)
 {
     int total = g->ncells * g->ncells;
-    for (int i = 0; i < total; i++) {
-        if (g->cells[i])
-            arrsetlen(g->cells[i], 0);
-    }
+    for (int i = 0; i < total; i++)
+        g->cells[i].count = 0;
 }
 
 static inline int clip_cell(int c, int ncells)
@@ -53,35 +57,32 @@ void grid_insert(grid *g, int idx, float x, float y)
     cx = clip_cell(cx, g->ncells);
     cy = clip_cell(cy, g->ncells);
     int linear = cx + cy * g->ncells;
-    arrpush(g->cells[linear], idx);
+    int_array_push(&g->cells[linear], idx);
 }
 
-int grid_query(grid *g, float x, float y, int **out_indices)
+int grid_query(grid *g, float x, float y, int *out, int max_out)
 {
-    *out_indices = NULL;
-    if (!g) return 0;
+    if (!g || !out) return 0;
 
     int cx = (int)(x * g->inv_cell_size);
     int cy = (int)(y * g->inv_cell_size);
+    int count = 0;
 
     for (int dy = -1; dy <= 1; dy++) {
         for (int dx = -1; dx <= 1; dx++) {
             int nx = cx + dx;
             int ny = cy + dy;
-            // wrap around for periodic boundary
             if (nx < 0) nx += g->ncells;
             else if (nx >= g->ncells) nx -= g->ncells;
             if (ny < 0) ny += g->ncells;
             else if (ny >= g->ncells) ny -= g->ncells;
             int linear = nx + ny * g->ncells;
-            int *cell = g->cells[linear];
-            int len = arrlen(cell);
-            for (int k = 0; k < len; k++) {
-                arrpush(*out_indices, cell[k]);
-            }
+            int_array *cell = &g->cells[linear];
+            for (int k = 0; k < cell->count && count < max_out; k++)
+                out[count++] = cell->data[k];
         }
     }
-    return arrlen(*out_indices);
+    return count;
 }
 
 void grid_draw_partitions(grid *g)

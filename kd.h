@@ -19,8 +19,7 @@ typedef struct kd_node_s
 
 kd_node *kd_build(const kd_point *points, int n);
 void kd_free(kd_node *node);
-int kd_query_radius_periodic(kd_node *tree, float px, float py, float radius, int **out_indices, int n_points);
-int kd_query_radius(kd_node *tree, float px, float py, float radius, int **out_indices);
+int kd_query_radius(kd_node *tree, float px, float py, float radius, int *out, int max_out);
 void kd_draw_tree_partitions(kd_node *node);
 void kd_draw_tree_partitions_full(kd_node *node, int depth);
 void kd_serialize(kd_node* tree, const char* filename);

@@ -9,11 +9,6 @@
 #define RAYMATH_IMPLEMENTATION
 #include <raymath.h>
 
-#ifndef STB_DS_IMPLEMENTATION
-#define STB_DS_IMPLEMENTATION
-#endif
-#include "stb_ds.h"
-
 #include "maths.h"
 #include "sim.h"
 

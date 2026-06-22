@@ -2,8 +2,6 @@
 #include <string.h>
 #include <math.h>
 
-#include "stb_ds.h"
-
 #include "maths.h"
 #include "sim.h"
 #include "grid.h"
@@ -83,10 +81,10 @@ sim* sim_create(int n, int m, backend_type backend, float dt, float friction_hal
     s->min_dist_matrix = (float*)malloc(sizeof(float) * m * m);
     s->radii_matrix = (float*)malloc(sizeof(float) * m * m);
 
-    arrsetlen(s->colors, n);
-    arrsetlen(s->positions, n);
-    arrsetlen(s->velocities, n);
-    arrsetlen(s->masses, n);
+    s->colors = (int*)malloc(n * sizeof(int));
+    s->positions = (vec2*)malloc(n * sizeof(vec2));
+    s->velocities = (vec2*)malloc(n * sizeof(vec2));
+    s->masses = (float*)malloc(n * sizeof(float));
 
     if (USE_PERIODIC) {
         s->neighbor_mark = (int*)calloc(n, sizeof(int));
@@ -113,10 +111,10 @@ void sim_free(sim *s)
 {
     if (!s)
         return;
-    arrfree(s->colors);
-    arrfree(s->positions);
-    arrfree(s->velocities);
-    arrfree(s->masses);
+    free(s->colors);
+    free(s->positions);
+    free(s->velocities);
+    free(s->masses);
     free(s->matrix);
     free(s->min_dist_matrix);
     free(s->radii_matrix);
@@ -166,6 +164,9 @@ void sim_update(sim *s)
     if (!s || s->n <= 0)
         return;
 
+    int max_neighbors = s->n;
+    int *neighbors = (int*)malloc(max_neighbors * sizeof(int));
+
     if (s->backend == BACKEND_GRID) {
         // ---- grid path ----
         grid_clear(s->grid);
@@ -175,13 +176,12 @@ void sim_update(sim *s)
         if (show_tree)
             grid_draw_partitions(s->grid);
 
-        int *neighbors = NULL;
         for (int i = 0; i < s->n; ++i) {
-            neighbors = NULL;
-            grid_query(s->grid, s->positions[i].x, s->positions[i].y, &neighbors);
+            int n_neighbors = grid_query(s->grid, s->positions[i].x, s->positions[i].y,
+                                         neighbors, max_neighbors);
 
             float totalForceX, totalForceY;
-            compute_forces_for_particle(s, i, neighbors, arrlen(neighbors), &totalForceX, &totalForceY);
+            compute_forces_for_particle(s, i, neighbors, n_neighbors, &totalForceX, &totalForceY);
 
             s->velocities[i].x *= s->frictionFactor;
             s->velocities[i].y *= s->frictionFactor;
@@ -190,8 +190,6 @@ void sim_update(sim *s)
             float ay = totalForceY / s->masses[i];
             s->velocities[i].x += ax * s->dt;
             s->velocities[i].y += ay * s->dt;
-
-            arrfree(neighbors);
         }
     } else {
         // ---- k-d tree path ----
@@ -205,8 +203,7 @@ void sim_update(sim *s)
                 kd_free(s->kd_tree);
                 s->kd_tree = NULL;
             }
-            kd_point *points = NULL;
-            arrsetlen(points, s->n);
+            kd_point *points = (kd_point*)malloc(s->n * sizeof(kd_point));
             for (int i = 0; i < s->n; ++i) {
                 points[i].x = s->positions[i].x;
                 points[i].y = s->positions[i].y;
@@ -214,7 +211,7 @@ void sim_update(sim *s)
             }
             s->kd_tree = kd_build(points, s->n);
             s->kd_rebuild_counter = KD_REBUILD_INTERVAL;
-            arrfree(points);
+            free(points);
         } else {
             s->kd_rebuild_counter--;
         }
@@ -222,13 +219,12 @@ void sim_update(sim *s)
         if (show_tree && s->kd_tree)
             kd_draw_tree_partitions_full(s->kd_tree, 0);
 
-        int *neighbors = NULL;
         for (int i = 0; i < s->n; ++i) {
-            neighbors = NULL;
-            kd_query_radius(s->kd_tree, s->positions[i].x, s->positions[i].y, s->rmax, &neighbors);
+            int n_neighbors = kd_query_radius(s->kd_tree, s->positions[i].x, s->positions[i].y,
+                                              s->rmax, neighbors, max_neighbors);
 
             float totalForceX, totalForceY;
-            compute_forces_for_particle(s, i, neighbors, arrlen(neighbors), &totalForceX, &totalForceY);
+            compute_forces_for_particle(s, i, neighbors, n_neighbors, &totalForceX, &totalForceY);
 
             s->velocities[i].x *= s->frictionFactor;
             s->velocities[i].y *= s->frictionFactor;
@@ -237,12 +233,12 @@ void sim_update(sim *s)
             float ay = totalForceY / s->masses[i];
             s->velocities[i].x += ax * s->dt;
             s->velocities[i].y += ay * s->dt;
-
-            arrfree(neighbors);
         }
 
         CURRENT_SIM_INSTANCE = NULL;
     }
+
+    free(neighbors);
 
     for (int i = 0; i < s->n; ++i) {
         s->positions[i].x += s->velocities[i].x * s->dt;
