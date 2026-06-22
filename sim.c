@@ -84,20 +84,16 @@ sim* sim_create(int n, int m, float dt, float friction_half_life, float rmax, fl
     s->forceFactor = forceFactor;
     s->frictionFactor = powf(0.5f, dt / friction_half_life);
     s->colors = NULL;
-    s->posx = NULL;
-    s->posy = NULL;
-    s->velx = NULL;
-    s->vely = NULL;
+    s->positions = NULL;
+    s->velocities = NULL;
     s->masses = NULL;
     s->matrix = (float*)malloc(sizeof(float) * m * m);
     s->min_dist_matrix = (float*)malloc(sizeof(float) * m * m);
     s->radii_matrix = (float*)malloc(sizeof(float) * m * m);
 
     arrsetlen(s->colors, n);
-    arrsetlen(s->posx, n);
-    arrsetlen(s->posy, n);
-    arrsetlen(s->velx, n);
-    arrsetlen(s->vely, n);
+    arrsetlen(s->positions, n);
+    arrsetlen(s->velocities, n);
     arrsetlen(s->masses, n);
 
     if (USE_PERIODIC) {
@@ -124,10 +120,8 @@ void sim_free(sim *s)
     if (!s)
         return;
     arrfree(s->colors);
-    arrfree(s->posx);
-    arrfree(s->posy);
-    arrfree(s->velx);
-    arrfree(s->vely);
+    arrfree(s->positions);
+    arrfree(s->velocities);
     arrfree(s->masses);
     free(s->matrix);
     free(s->min_dist_matrix);
@@ -154,7 +148,8 @@ static inline void compute_forces_for_particle(sim *s, int i, const int *neighbo
         if (j == i)
             continue;
         float rx, ry;
-        min_image_disp(s->posx[i], s->posy[i], s->posx[j], s->posy[j], &rx, &ry);
+        min_image_disp(s->positions[i].x, s->positions[i].y,
+                       s->positions[j].x, s->positions[j].y, &rx, &ry);
         float r = hypotf(rx, ry);
         if (r > 0.0f && r < rmax) {
             float invr = 1.0f / r;
@@ -181,7 +176,7 @@ void sim_update(sim *s)
     // ---- grid path ----
     grid_clear(s->grid);
     for (int i = 0; i < s->n; ++i) {
-        grid_insert(s->grid, i, s->posx[i], s->posy[i]);
+        grid_insert(s->grid, i, s->positions[i].x, s->positions[i].y);
     }
 
     if (show_tree)
@@ -190,18 +185,18 @@ void sim_update(sim *s)
     int *neighbors = NULL;
     for (int i = 0; i < s->n; ++i) {
         neighbors = NULL;
-        grid_query(s->grid, s->posx[i], s->posy[i], &neighbors);
+        grid_query(s->grid, s->positions[i].x, s->positions[i].y, &neighbors);
 
         float totalForceX, totalForceY;
         compute_forces_for_particle(s, i, neighbors, arrlen(neighbors), &totalForceX, &totalForceY);
 
-        s->velx[i] *= s->frictionFactor;
-        s->vely[i] *= s->frictionFactor;
+        s->velocities[i].x *= s->frictionFactor;
+        s->velocities[i].y *= s->frictionFactor;
 
         float ax = totalForceX / s->masses[i];
         float ay = totalForceY / s->masses[i];
-        s->velx[i] += ax * s->dt;
-        s->vely[i] += ay * s->dt;
+        s->velocities[i].x += ax * s->dt;
+        s->velocities[i].y += ay * s->dt;
 
         arrfree(neighbors);
     }
@@ -211,8 +206,8 @@ void sim_update(sim *s)
     kd_point *points = NULL;
     arrsetlen(points, s->n);
     for (int i = 0; i < s->n; ++i) {
-        points[i].x = s->posx[i];
-        points[i].y = s->posy[i];
+        points[i].x = s->positions[i].x;
+        points[i].y = s->positions[i].y;
         points[i].index = i;
     }
 
@@ -227,18 +222,18 @@ void sim_update(sim *s)
     int *neighbors = NULL;
     for (int i = 0; i < s->n; ++i) {
         neighbors = NULL;
-        kd_query_radius(tree, s->posx[i], s->posy[i], s->rmax, &neighbors);
+        kd_query_radius(tree, s->positions[i].x, s->positions[i].y, s->rmax, &neighbors);
 
         float totalForceX, totalForceY;
         compute_forces_for_particle(s, i, neighbors, arrlen(neighbors), &totalForceX, &totalForceY);
 
-        s->velx[i] *= s->frictionFactor;
-        s->vely[i] *= s->frictionFactor;
+        s->velocities[i].x *= s->frictionFactor;
+        s->velocities[i].y *= s->frictionFactor;
 
         float ax = totalForceX / s->masses[i];
         float ay = totalForceY / s->masses[i];
-        s->velx[i] += ax * s->dt;
-        s->vely[i] += ay * s->dt;
+        s->velocities[i].x += ax * s->dt;
+        s->velocities[i].y += ay * s->dt;
 
         arrfree(neighbors);
     }
@@ -251,16 +246,16 @@ void sim_update(sim *s)
 #endif
 
     for (int i = 0; i < s->n; ++i) {
-        s->posx[i] += s->velx[i] * s->dt;
-        s->posy[i] += s->vely[i] * s->dt;
+        s->positions[i].x += s->velocities[i].x * s->dt;
+        s->positions[i].y += s->velocities[i].y * s->dt;
         if (USE_PERIODIC) {
-            s->posx[i] = wrap_coord(s->posx[i]);
-            s->posy[i] = wrap_coord(s->posy[i]);
+            s->positions[i].x = wrap_coord(s->positions[i].x);
+            s->positions[i].y = wrap_coord(s->positions[i].y);
         } else {
-            if (s->posx[i] < 0.0f) s->posx[i] = 0.0f;
-            if (s->posx[i] >= WORLD_SIZE) s->posx[i] = WORLD_SIZE - 1e-6f;
-            if (s->posy[i] < 0.0f) s->posy[i] = 0.0f;
-            if (s->posy[i] >= WORLD_SIZE) s->posy[i] = WORLD_SIZE - 1e-6f;
+            if (s->positions[i].x < 0.0f) s->positions[i].x = 0.0f;
+            if (s->positions[i].x >= WORLD_SIZE) s->positions[i].x = WORLD_SIZE - 1e-6f;
+            if (s->positions[i].y < 0.0f) s->positions[i].y = 0.0f;
+            if (s->positions[i].y >= WORLD_SIZE) s->positions[i].y = WORLD_SIZE - 1e-6f;
         }
     }
 }
@@ -269,7 +264,7 @@ void sim_draw_frame(sim *s)
 {
     if (!s) return;
     for (int i = 0; i < s->n; ++i) {
-        draw_particle_world(s->posx[i], s->posy[i], 1.5f, s->colors[i], s->masses[i]);
+        draw_particle_world(s->positions[i].x, s->positions[i].y, 1.5f, s->colors[i], s->masses[i]);
     }
 }
 
@@ -277,8 +272,8 @@ void sim_get_positions(sim *s, float* out_x, float* out_y, int* out_colors)
 {
     if (!s) return;
     for (int i = 0; i < s->n; ++i) {
-        if (out_x) out_x[i] = s->posx[i];
-        if (out_y) out_y[i] = s->posy[i];
+        if (out_x) out_x[i] = s->positions[i].x;
+        if (out_y) out_y[i] = s->positions[i].y;
         if (out_colors) out_colors[i] = s->colors[i];
     }
 }
@@ -321,10 +316,10 @@ void sim_randomize_masses(sim *s, float min_mass, float max_mass)
 void sim_randomize_positions(sim *s)
 {
     for (int i = 0; i < s->n; i++) {
-        s->posx[i] = randf() * WORLD_SIZE;
-        s->posy[i] = randf() * WORLD_SIZE;
-        s->velx[i] = 0.0f;
-        s->vely[i] = 0.0f;
+        s->positions[i].x = randf() * WORLD_SIZE;
+        s->positions[i].y = randf() * WORLD_SIZE;
+        s->velocities[i].x = 0.0f;
+        s->velocities[i].y = 0.0f;
     }
 }
 

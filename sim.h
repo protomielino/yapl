@@ -3,6 +3,8 @@
 
 typedef struct grid_s grid;
 
+typedef struct { float x, y; } vec2;
+
 typedef struct sim_s
 {
     int n;
@@ -12,12 +14,10 @@ typedef struct sim_s
     float rmax;
     float frictionFactor;
     float forceFactor;
-    // arrays
+    // arrays (SoA — Structure of Arrays)
     int *colors;        // size n
-    float *posx;        // size n
-    float *posy;        // size n
-    float *velx;        // size n
-    float *vely;        // size n
+    vec2 *positions;    // size n
+    vec2 *velocities;   // size n
     // interaction matrix (m x m)
     float *matrix;      // row-major, size m*m
     float *masses;      // massa per particella
