@@ -59,8 +59,4 @@ float rand01(void)
     return (float)((x * 0x2545F4914F6CDD1DULL) >> 40) / 16777216.0f;
 }
 
-float rand_range(float min, float max)
-{
-    return min + rand01() * (max - min);
-}
 
