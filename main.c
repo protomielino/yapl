@@ -367,8 +367,9 @@ static void draw_matrix_panel(const char *title, float *matrix, int m,
 static void handle_mouse_hover(int ty_now)
 {
     Vector2 mp = GetMousePosition();
+    int header_h = 5 * dy;
     cell_col_hover = (mp.x - bx - cell_size - 5) / (cell_size + 2);
-    cell_row_hover = (mp.y - ty_now - cell_size - 5) / (cell_size + 2);
+    cell_row_hover = (mp.y - ty_now - header_h - cell_size - 5) / (cell_size + 2);
 
     cell_col_hover = (cell_col_hover < 0) ? 0 : (cell_col_hover >= DEFAULT_M ? DEFAULT_M - 1 : cell_col_hover);
     cell_row_hover = (cell_row_hover < 0) ? 0 : (cell_row_hover >= DEFAULT_M ? DEFAULT_M - 1 : cell_row_hover);
@@ -376,20 +377,19 @@ static void handle_mouse_hover(int ty_now)
 
 static void handle_cell_edit(sim *s, float delta)
 {
-    if (showForcesDBG) {
+    if (showForcesDBG && cell_row_selected >= 0 && cell_col_selected >= 0) {
         int idx = cell_row_selected * s->m + cell_col_selected;
         s->matrix[idx] += delta;
         if (s->matrix[idx] < -1.0f) s->matrix[idx] = -1.0f;
         if (s->matrix[idx] > 1.0f) s->matrix[idx] = 1.0f;
     }
-    if (showMinDistancesDBG) {
+    if (showMinDistancesDBG && cell_row_selected >= 0 && cell_col_selected >= 0) {
         int idx = cell_row_selected * s->m + cell_col_selected;
         s->min_dist_matrix[idx] += delta;
         if (s->min_dist_matrix[idx] < 0.0f) s->min_dist_matrix[idx] = 0.0f;
         if (s->min_dist_matrix[idx] > 1.0f) s->min_dist_matrix[idx] = 1.0f;
     }
-    if (showMassesDBG) {
-        // apply to all particles of selected type
+    if (showMassesDBG && cell_col_selected >= 0) {
         for (int i = 0; i < s->n; ++i) {
             if (s->colors[i] == cell_col_selected) {
                 s->masses[i] += delta;
@@ -397,7 +397,7 @@ static void handle_cell_edit(sim *s, float delta)
             }
         }
     }
-    if (showRadiiDBG) {
+    if (showRadiiDBG && cell_row_selected >= 0 && cell_col_selected >= 0) {
         int idx = cell_row_selected * s->m + cell_col_selected;
         s->radii_matrix[idx] += delta;
         if (s->radii_matrix[idx] < 0.0f) s->radii_matrix[idx] = 0.0f;
