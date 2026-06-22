@@ -43,6 +43,7 @@ int cell_row_hover;
 int cell_col_hover;
 int cell_row_selected;
 int cell_col_selected;
+bool mouse_over_matrix;
 
 // -------------------- configuration --------------------
 const int DEFAULT_N = 1000;
@@ -101,7 +102,7 @@ void showHelp()
         sprintf(text, "[z,x,c,v] forces, minDist, masses, radii");
         DrawText(text, 10, ty, textDim, WHITE);
         ty += dy;
-        sprintf(text, "[arrows] edit selected cell");
+        sprintf(text, "[scroll] edit cell under mouse");
         DrawText(text, 10, ty, textDim, WHITE);
         ty += dy;
         sprintf(text, "[CTRL+click] select cell");
@@ -176,20 +177,22 @@ void updatePanZoom()
                                 scale));
         startPan = mouse_screen;
     }
+}
 
-    Vector2 mouseWorld_BeforeZoom = {};
-    mouseWorld_BeforeZoom = ScreenToWorld(mouse_screen);
+static void zoom_at_cursor(float wheel)
+{
+    if (wheel == 0.0f) return;
+    Vector2 mouseWorld_BeforeZoom = ScreenToWorld(mouse_screen);
 
-    if (GetMouseWheelMove() > 0) {
+    if (wheel > 0) {
         scale.x *= 1.1f;
         scale.y *= 1.1f;
-    } else if (GetMouseWheelMove() < 0) {
+    } else {
         scale.x *= 0.9f;
         scale.y *= 0.9f;
     }
 
-    Vector2 mouseWorld_AfterZoom = {};
-    mouseWorld_AfterZoom = ScreenToWorld(mouse_screen);
+    Vector2 mouseWorld_AfterZoom = ScreenToWorld(mouse_screen);
     offset = Vector2Add(
             offset,
             Vector2Subtract(
@@ -216,6 +219,7 @@ void initHUD()
     cell_col_hover = 0;
     cell_row_selected = -1;
     cell_col_selected = -1;
+    mouse_over_matrix = false;
 }
 
 // -------------------- drawing API --------------------
@@ -353,11 +357,14 @@ static void handle_mouse_hover(int ty_now)
 {
     Vector2 mp = GetMousePosition();
     int header_h = 5 * dy;
-    cell_col_hover = (mp.x - bx - cell_size - 5) / (cell_size + 2);
-    cell_row_hover = (mp.y - ty_now - header_h - cell_size - 5) / (cell_size + 2);
+    int nrows = showMassesDBG ? 1 : DEFAULT_M;
+    int raw_col = (int)((mp.x - bx - cell_size - 5) / (cell_size + 2));
+    int raw_row = (int)((mp.y - ty_now - header_h - cell_size - 5) / (cell_size + 2));
 
-    cell_col_hover = (cell_col_hover < 0) ? 0 : (cell_col_hover >= DEFAULT_M ? DEFAULT_M - 1 : cell_col_hover);
-    cell_row_hover = (cell_row_hover < 0) ? 0 : (cell_row_hover >= DEFAULT_M ? DEFAULT_M - 1 : cell_row_hover);
+    mouse_over_matrix = (raw_col >= 0 && raw_col < DEFAULT_M && raw_row >= 0 && raw_row < nrows);
+
+    cell_col_hover = (raw_col < 0) ? 0 : (raw_col >= DEFAULT_M ? DEFAULT_M - 1 : raw_col);
+    cell_row_hover = (raw_row < 0) ? 0 : (raw_row >= nrows ? nrows - 1 : raw_row);
 }
 
 static void handle_cell_edit(sim *s, float delta)
@@ -478,14 +485,6 @@ int main(int argc, char *argv[])
             zero_active_panel(s);
         }
 
-        // Arrow key editing
-        if (IsKeyPressed(KEY_UP)) {
-            handle_cell_edit(s, 0.1f);
-        }
-        if (IsKeyPressed(KEY_DOWN)) {
-            handle_cell_edit(s, -0.1f);
-        }
-
         frameCounter++;
 
         BeginDrawing(); {
@@ -518,6 +517,25 @@ int main(int argc, char *argv[])
             bool any_panel = showForcesDBG || showMinDistancesDBG || showMassesDBG || showRadiiDBG;
             if (any_panel) {
                 handle_mouse_hover(ty);
+            }
+
+            // Wheel: edit hovered cell or zoom at cursor
+            float wheel = GetMouseWheelMove();
+            if (any_panel && mouse_over_matrix) {
+                float step = 0.05f;
+                if (IsKeyDown(KEY_LEFT_SHIFT)) step = 0.25f;
+                if (IsKeyDown(KEY_LEFT_CONTROL)) step = 0.01f;
+                if (wheel > 0) {
+                    cell_row_selected = cell_row_hover;
+                    cell_col_selected = cell_col_hover;
+                    handle_cell_edit(s, step);
+                } else if (wheel < 0) {
+                    cell_row_selected = cell_row_hover;
+                    cell_col_selected = cell_col_hover;
+                    handle_cell_edit(s, -step);
+                }
+            } else if (wheel != 0.0f) {
+                zoom_at_cursor(wheel);
             }
 
             if (showForcesDBG) {

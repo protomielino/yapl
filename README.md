@@ -27,11 +27,11 @@ yapl [-n <count>] [-m <colors>] [--backend grid|kd|qt]
 
 | Key | Action |
 |---|---|
-| `[z]` | Show forces matrix (edit with arrows) |
+| `[z]` | Show forces matrix (scroll to edit) |
 | `[x]` | Show minDist matrix (beta per type pair) |
 | `[c]` | Show masses per type |
 | `[v]` | Show radii matrix (display only) |
-| `[arrows]` | Edit selected cell ±0.1 |
+| `[scroll]` | Hover + scroll to edit cell (±0.05, Shift=±0.25, Ctrl=±0.01) |
 | `[CTRL+click]` | Select cell (yellow border) |
 | `[CTRL+right-click]` | Zero active panel |
 | `[SPACE]` | Randomize all |
@@ -43,4 +43,4 @@ yapl [-n <count>] [-m <colors>] [--backend grid|kd|qt]
 | `[R]` | Reset pan & zoom |
 | `[MMB]` | Reset pan |
 | `[CLICK+DRAG]` | Pan |
-| `[WHEEL]` | Zoom |
+| `[WHEEL]` | Zoom (or edit cell when over matrix panel) |
