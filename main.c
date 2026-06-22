@@ -15,10 +15,6 @@
 #include "stb_ds.h"
 
 #include "maths.h"
-
-#ifndef USE_GRID
-#define USE_GRID 1
-#endif
 #include "sim.h"
 
 const int WIDTH  = 700;
@@ -63,14 +59,9 @@ const int DEFAULT_M = 6;
 const float FORCE_FACTOR = 10.0f;
 
 const int USE_PERIODIC = 1;
-
-#if !USE_GRID
-int KD_CURRENT_POINT_COUNT = 0;
-sim *CURRENT_SIM_INSTANCE = NULL;
-#endif
 const float WORLD_SIZE = 1.0f;
 
-void showHUD()
+void showHUD(sim *s)
 {
     if(show_HUD) {
         sprintf(text, "counter: %ld", frameCounter);
@@ -82,7 +73,7 @@ void showHUD()
         sprintf(text, "scale: {%.2f, %.2f} [WHEEL]", scale.x, scale.y);
         DrawText(text, 10, ty, textDim, WHITE);
         ty += dy;
-        sprintf(text, "backend: %s", USE_GRID ? "grid" : "k-d tree");
+        sprintf(text, "backend: %s", s->backend == BACKEND_GRID ? "grid" : "k-d tree");
         DrawText(text, 10, ty, textDim, WHITE);
         ty += dy;
         ty += dy;
@@ -421,8 +412,31 @@ static void zero_active_panel(sim *s)
     }
 }
 
-int main(void)
+int main(int argc, char *argv[])
 {
+    int n = DEFAULT_N;
+    int m_colors = DEFAULT_M;
+    backend_type backend = BACKEND_GRID;
+
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "-n") == 0 && i + 1 < argc) {
+            n = atoi(argv[++i]);
+        } else if (strcmp(argv[i], "-m") == 0 && i + 1 < argc) {
+            m_colors = atoi(argv[++i]);
+        } else if (strcmp(argv[i], "--backend") == 0 && i + 1 < argc) {
+            i++;
+            if (strcmp(argv[i], "kd") == 0) backend = BACKEND_KD;
+            else if (strcmp(argv[i], "grid") == 0) backend = BACKEND_GRID;
+            else { fprintf(stderr, "Unknown backend: %s (use grid or kd)\n", argv[i]); return 1; }
+        } else if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
+            printf("Usage: yapl [-n N] [-m M] [--backend grid|kd]\n");
+            return 0;
+        } else {
+            fprintf(stderr, "Unknown option: %s\n", argv[i]);
+            return 1;
+        }
+    }
+
     rand_seed((unsigned)clock());
     frameCounter = 0;
 
@@ -434,7 +448,7 @@ int main(void)
     showMassesDBG = false;
     showRadiiDBG = false;
 
-    sim *s = sim_create(DEFAULT_N, DEFAULT_M, DEFAULT_DT, DEFAULT_FRICTION_HALF_LIFE, DEFAULT_RMAX, FORCE_FACTOR);
+    sim *s = sim_create(n, m_colors, backend, DEFAULT_DT, DEFAULT_FRICTION_HALF_LIFE, DEFAULT_RMAX, FORCE_FACTOR);
 
     initPanZoom(Vector2Zero(), Vector2One());
     initHUD();
@@ -502,7 +516,7 @@ int main(void)
             DrawText(text, cpos.x + 5, cpos.y + 5, textDim / 3 * Vector2Length(scale), WHITE);
 
             ty = by;
-            showHUD();
+            showHUD(s);
             showHelp();
             sprintf(text, "help, HUD: [h,H]");
             DrawText(text, 10, ty, textDim, WHITE);

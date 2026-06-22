@@ -2,25 +2,20 @@ CC      = gcc
 CFLAGS  = -Wall -Wextra -O2
 LDLIBS  = -lm -lraylib
 
-SRC_COMMON = main.c maths.c sim.c
+SRC = main.c maths.c sim.c grid.c kd.c
 
-.PHONY: all grid kd run run-grid run-kd clean
+.PHONY: all run clean
 
-all: grid kd
+all: yapl
 
-grid: $(SRC_COMMON) grid.c
-	$(CC) $(CFLAGS) $^ -o yapl $(LDLIBS) -DUSE_GRID=1
+yapl: $(SRC)
+	$(CC) $(CFLAGS) $^ -o yapl $(LDLIBS)
 
-kd: $(SRC_COMMON) kd.c
-	$(CC) $(CFLAGS) $^ -o yapl_kd $(LDLIBS) -DUSE_GRID=0
-
-run: run-grid
-
-run-grid: grid
+run: yapl
 	./yapl
 
-run-kd: kd
-	./yapl_kd
+run-kd: yapl
+	./yapl --backend kd
 
 clean:
-	rm -f yapl yapl_kd
+	rm -f yapl

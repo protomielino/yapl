@@ -2,37 +2,35 @@
 #define SIM_H_
 
 typedef struct grid_s grid;
+typedef struct kd_node_s kd_node;
 
 typedef struct { float x, y; } vec2;
+typedef enum { BACKEND_GRID, BACKEND_KD } backend_type;
 
 typedef struct sim_s
 {
     int n;
-    int m; // number of colors
+    int m;
+    backend_type backend;
     float dt;
     float friction_half_life;
     float rmax;
     float frictionFactor;
     float forceFactor;
-    // arrays (SoA — Structure of Arrays)
-    int *colors;        // size n
-    vec2 *positions;    // size n
-    vec2 *velocities;   // size n
-    // interaction matrix (m x m)
-    float *matrix;      // row-major, size m*m
-    float *masses;      // massa per particella
-    float *min_dist_matrix; // row-major, size m*m, beta per type pair
-    float *radii_matrix;    // row-major, size m*m, display only
-    int *neighbor_mark; // size n, reused across queries when USE_PERIODIC==1
-#if USE_GRID
+    int *colors;
+    vec2 *positions;
+    vec2 *velocities;
+    float *matrix;
+    float *masses;
+    float *min_dist_matrix;
+    float *radii_matrix;
+    int *neighbor_mark;
     grid *grid;
-#else
     struct kd_node_s *kd_tree;
     int kd_rebuild_counter;
-#endif
 } sim;
 
-sim* sim_create(int n, int m, float dt, float friction_half_life, float rmax, float forceFactor);
+sim* sim_create(int n, int m, backend_type backend, float dt, float friction_half_life, float rmax, float forceFactor);
 void sim_free(sim* s);
 void sim_update(sim* s);
 void sim_draw_frame(sim* s);

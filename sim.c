@@ -6,28 +6,19 @@
 
 #include "maths.h"
 #include "sim.h"
-#if USE_GRID
 #include "grid.h"
-#else
 #include "kd.h"
-#endif
 
 extern bool show_tree;
 extern const int USE_PERIODIC;
 extern const float WORLD_SIZE;
 extern const int WIDTH;
 extern const int HEIGHT;
-extern const int DEFAULT_M;
 
-#if !USE_GRID
-extern int KD_CURRENT_POINT_COUNT;
-extern sim *CURRENT_SIM_INSTANCE;
-#endif
+int KD_CURRENT_POINT_COUNT = 0;
+sim *CURRENT_SIM_INSTANCE = NULL;
 
 extern void draw_particle_world(float x, float y, float size, int color, float mass);
-#if !USE_GRID
-extern void draw_line_world(float x1, float y1, float x2, float y2);
-#endif
 
 static inline float force_law(float r, float a, float beta)
 {
@@ -73,11 +64,12 @@ static inline void min_image_disp(float ax, float ay, float bx, float by, float 
     *out_dx = dx; *out_dy = dy;
 }
 
-sim* sim_create(int n, int m, float dt, float friction_half_life, float rmax, float forceFactor)
+sim* sim_create(int n, int m, backend_type backend, float dt, float friction_half_life, float rmax, float forceFactor)
 {
     sim* s = (sim*)malloc(sizeof(sim));
     s->n = n;
     s->m = m;
+    s->backend = backend;
     s->dt = dt;
     s->friction_half_life = friction_half_life;
     s->rmax = rmax;
@@ -102,12 +94,11 @@ sim* sim_create(int n, int m, float dt, float friction_half_life, float rmax, fl
         s->neighbor_mark = NULL;
     }
 
-#if USE_GRID
-    s->grid = grid_create(rmax, WORLD_SIZE);
-#else
+    s->grid = NULL;
     s->kd_tree = NULL;
     s->kd_rebuild_counter = 0;
-#endif
+    if (backend == BACKEND_GRID)
+        s->grid = grid_create(rmax, WORLD_SIZE);
 
     sim_randomize_colors(s);
     sim_randomize_positions(s);
@@ -131,13 +122,10 @@ void sim_free(sim *s)
     free(s->radii_matrix);
     if (s->neighbor_mark)
         free(s->neighbor_mark);
-#if USE_GRID
     if (s->grid)
         grid_free(s->grid);
-#else
     if (s->kd_tree)
         kd_free(s->kd_tree);
-#endif
     free(s);
 }
 
@@ -178,85 +166,83 @@ void sim_update(sim *s)
     if (!s || s->n <= 0)
         return;
 
-#if USE_GRID
-    // ---- grid path ----
-    grid_clear(s->grid);
-    for (int i = 0; i < s->n; ++i) {
-        grid_insert(s->grid, i, s->positions[i].x, s->positions[i].y);
-    }
+    if (s->backend == BACKEND_GRID) {
+        // ---- grid path ----
+        grid_clear(s->grid);
+        for (int i = 0; i < s->n; ++i)
+            grid_insert(s->grid, i, s->positions[i].x, s->positions[i].y);
 
-    if (show_tree)
-        grid_draw_partitions(s->grid);
+        if (show_tree)
+            grid_draw_partitions(s->grid);
 
-    int *neighbors = NULL;
-    for (int i = 0; i < s->n; ++i) {
-        neighbors = NULL;
-        grid_query(s->grid, s->positions[i].x, s->positions[i].y, &neighbors);
-
-        float totalForceX, totalForceY;
-        compute_forces_for_particle(s, i, neighbors, arrlen(neighbors), &totalForceX, &totalForceY);
-
-        s->velocities[i].x *= s->frictionFactor;
-        s->velocities[i].y *= s->frictionFactor;
-
-        float ax = totalForceX / s->masses[i];
-        float ay = totalForceY / s->masses[i];
-        s->velocities[i].x += ax * s->dt;
-        s->velocities[i].y += ay * s->dt;
-
-        arrfree(neighbors);
-    }
-
-#else
-    // ---- k-d tree path ----
-    const int KD_REBUILD_INTERVAL = 10;
-
-    if (s->kd_rebuild_counter <= 0) {
-        if (s->kd_tree) {
-            kd_free(s->kd_tree);
-            s->kd_tree = NULL;
-        }
-        kd_point *points = NULL;
-        arrsetlen(points, s->n);
+        int *neighbors = NULL;
         for (int i = 0; i < s->n; ++i) {
-            points[i].x = s->positions[i].x;
-            points[i].y = s->positions[i].y;
-            points[i].index = i;
+            neighbors = NULL;
+            grid_query(s->grid, s->positions[i].x, s->positions[i].y, &neighbors);
+
+            float totalForceX, totalForceY;
+            compute_forces_for_particle(s, i, neighbors, arrlen(neighbors), &totalForceX, &totalForceY);
+
+            s->velocities[i].x *= s->frictionFactor;
+            s->velocities[i].y *= s->frictionFactor;
+
+            float ax = totalForceX / s->masses[i];
+            float ay = totalForceY / s->masses[i];
+            s->velocities[i].x += ax * s->dt;
+            s->velocities[i].y += ay * s->dt;
+
+            arrfree(neighbors);
         }
-        s->kd_tree = kd_build(points, s->n);
-        s->kd_rebuild_counter = KD_REBUILD_INTERVAL;
-        arrfree(points);
     } else {
-        s->kd_rebuild_counter--;
+        // ---- k-d tree path ----
+        const int KD_REBUILD_INTERVAL = 10;
+
+        CURRENT_SIM_INSTANCE = s;
+        KD_CURRENT_POINT_COUNT = s->n;
+
+        if (s->kd_rebuild_counter <= 0) {
+            if (s->kd_tree) {
+                kd_free(s->kd_tree);
+                s->kd_tree = NULL;
+            }
+            kd_point *points = NULL;
+            arrsetlen(points, s->n);
+            for (int i = 0; i < s->n; ++i) {
+                points[i].x = s->positions[i].x;
+                points[i].y = s->positions[i].y;
+                points[i].index = i;
+            }
+            s->kd_tree = kd_build(points, s->n);
+            s->kd_rebuild_counter = KD_REBUILD_INTERVAL;
+            arrfree(points);
+        } else {
+            s->kd_rebuild_counter--;
+        }
+
+        if (show_tree && s->kd_tree)
+            kd_draw_tree_partitions_full(s->kd_tree, 0);
+
+        int *neighbors = NULL;
+        for (int i = 0; i < s->n; ++i) {
+            neighbors = NULL;
+            kd_query_radius(s->kd_tree, s->positions[i].x, s->positions[i].y, s->rmax, &neighbors);
+
+            float totalForceX, totalForceY;
+            compute_forces_for_particle(s, i, neighbors, arrlen(neighbors), &totalForceX, &totalForceY);
+
+            s->velocities[i].x *= s->frictionFactor;
+            s->velocities[i].y *= s->frictionFactor;
+
+            float ax = totalForceX / s->masses[i];
+            float ay = totalForceY / s->masses[i];
+            s->velocities[i].x += ax * s->dt;
+            s->velocities[i].y += ay * s->dt;
+
+            arrfree(neighbors);
+        }
+
+        CURRENT_SIM_INSTANCE = NULL;
     }
-
-    CURRENT_SIM_INSTANCE = s;
-    KD_CURRENT_POINT_COUNT = s->n;
-
-    if (show_tree && s->kd_tree)
-        kd_draw_tree_partitions_full(s->kd_tree, 0);
-
-    int *neighbors = NULL;
-    for (int i = 0; i < s->n; ++i) {
-        neighbors = NULL;
-        kd_query_radius(s->kd_tree, s->positions[i].x, s->positions[i].y, s->rmax, &neighbors);
-
-        float totalForceX, totalForceY;
-        compute_forces_for_particle(s, i, neighbors, arrlen(neighbors), &totalForceX, &totalForceY);
-
-        s->velocities[i].x *= s->frictionFactor;
-        s->velocities[i].y *= s->frictionFactor;
-
-        float ax = totalForceX / s->masses[i];
-        float ay = totalForceY / s->masses[i];
-        s->velocities[i].x += ax * s->dt;
-        s->velocities[i].y += ay * s->dt;
-
-        arrfree(neighbors);
-    }
-
-    CURRENT_SIM_INSTANCE = NULL;
-#endif
 
     for (int i = 0; i < s->n; ++i) {
         s->positions[i].x += s->velocities[i].x * s->dt;
@@ -334,9 +320,7 @@ void sim_randomize_positions(sim *s)
         s->velocities[i].x = 0.0f;
         s->velocities[i].y = 0.0f;
     }
-#if !USE_GRID
     s->kd_rebuild_counter = 0;
-#endif
 }
 
 void sim_randomize_colors(sim *s)

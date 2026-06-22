@@ -5,13 +5,23 @@ Particle Life simulation with spatial partitioning for performance.
 ## Build
 
 ```
-make          # build both backends
-make grid     # grid backend (default, recommended)
-make kd       # k-d tree backend
-make run      # build grid + run
-make run-kd   # build k-d tree + run
+make          # build
+make run      # build + run (grid backend, default)
+make run-kd   # build + run with k-d tree backend
 make clean
 ```
+
+## Usage
+
+```
+yapl [-n <count>] [-m <colors>] [--backend grid|kd]
+```
+
+| Argument | Default | Description |
+|---|---|---|
+| `-n` | 1000 | Number of particles |
+| `-m` | 6 | Number of colors / types |
+| `--backend` | `grid` | Spatial partition backend (`grid` or `kd`) |
 
 ## Controls
 
