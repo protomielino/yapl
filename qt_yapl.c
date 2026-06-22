@@ -596,11 +596,9 @@ void qt_draw(qtNode *q, int depth_limit)
     }
 }
 
-unsigned int rnd_state;
-
 static void init_globals()
 {
-    rnd_state = seed_random;
+    rand_seed(seed_random);
     frictionFactor = powf(0.5f, dt / frictionHalfLife);
     rMax = base_rMax;
 }
@@ -633,7 +631,7 @@ static float* makeRandomMatrix(int m)
 {
     float *mat = malloc(sizeof(float)*m*m);
     for (int i=0;i<m*m;i++)
-        mat[i] = frand()*2.0f - 1.0f;
+        mat[i] = rand01()*2.0f - 1.0f;
     return mat;
 }
 
@@ -658,12 +656,12 @@ int main(int argc, char *argv[])
 
     // randomize initial particles: positions uniform, small random vel, random color
     for (int i = 0; i < n; ++i) {
-        particles[i].position.x = frand();
-        particles[i].position.y = frand();
-        particles[i].velocity.x = (frand() - 0.5f) * 0.01f;
-        particles[i].velocity.y = (frand() - 0.5f) * 0.01f;
-        particles[i].type = (int)(frand() * m_colors);
-        particles[i].mass = 0.5f + frand() * 1.5f; // [0.5, 2.0]
+        particles[i].position.x = rand01();
+        particles[i].position.y = rand01();
+        particles[i].velocity.x = (rand01() - 0.5f) * 0.01f;
+        particles[i].velocity.y = (rand01() - 0.5f) * 0.01f;
+        particles[i].type = (int)(rand01() * m_colors);
+        particles[i].mass = 0.5f + rand01() * 1.5f; // [0.5, 2.0]
     }
 
     // create random interaction matrix m_colors x m_colors in [-1,1]

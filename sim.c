@@ -304,33 +304,33 @@ void sim_randomize_all(sim *s, float min_mass, float max_mass)
 void sim_randomize_matrix(sim *s)
 {
     for (int i = 0; i < s->m * s->m; ++i)
-        s->matrix[i] = randf() * 2.0f - 1.0f;
+        s->matrix[i] = rand01() * 2.0f - 1.0f;
 }
 
 void sim_randomize_min_dist_matrix(sim *s)
 {
     for (int i = 0; i < s->m * s->m; ++i)
-        s->min_dist_matrix[i] = randf() * 0.35f;
+        s->min_dist_matrix[i] = rand01() * 0.35f;
 }
 
 void sim_randomize_radii_matrix(sim *s)
 {
     for (int i = 0; i < s->m * s->m; ++i)
-        s->radii_matrix[i] = 0.3f + randf() * 0.7f;
+        s->radii_matrix[i] = 0.3f + rand01() * 0.7f;
 }
 
 void sim_randomize_masses(sim *s, float min_mass, float max_mass)
 {
     for (int i = 0; i < s->n; i++) {
-        s->masses[i] = min_mass + randf() * (max_mass - min_mass);
+        s->masses[i] = min_mass + rand01() * (max_mass - min_mass);
     }
 }
 
 void sim_randomize_positions(sim *s)
 {
     for (int i = 0; i < s->n; i++) {
-        s->positions[i].x = randf() * WORLD_SIZE;
-        s->positions[i].y = randf() * WORLD_SIZE;
+        s->positions[i].x = rand01() * WORLD_SIZE;
+        s->positions[i].y = rand01() * WORLD_SIZE;
         s->velocities[i].x = 0.0f;
         s->velocities[i].y = 0.0f;
     }
@@ -342,6 +342,6 @@ void sim_randomize_positions(sim *s)
 void sim_randomize_colors(sim *s)
 {
     for (int i = 0; i < s->n; i++) {
-        s->colors[i] = (int)(randf() * s->m);
+        s->colors[i] = (int)(rand01() * s->m);
     }
 }

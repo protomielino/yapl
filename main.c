@@ -421,11 +421,9 @@ static void zero_active_panel(sim *s)
     }
 }
 
-unsigned int rnd_state;
-
 int main(void)
 {
-    srand((unsigned)clock());
+    rand_seed((unsigned)clock());
     frameCounter = 0;
 
     show_help = false;

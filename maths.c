@@ -21,29 +21,11 @@ Vector2 ScreenToWorld(Vector2 screen)
     return world;
 }
 
-float function (float x)
-{
-    return cos(x);
-}
-
 float map(float input, float input_start, float input_end, float output_start, float output_end)
 {
     float slope = 1.0 * (output_end - output_start) / (input_end - input_start);
     float output = output_start + slope * (input - input_start);
     return output;
-}
-
-float random_range(float min, float max)
-{
-    return drand48() * (max - min) + min;
-}
-
-// helper random
-extern unsigned int rnd_state;
-float frand()
-{
-    rnd_state = rnd_state * 1664525u + 1013904223u;
-    return (rnd_state & 0x00FFFFFF) / (float)0x01000000;
 }
 
 // clamp wrap into [0,1)
@@ -54,8 +36,31 @@ float wrap01(float v)
     return v;
 }
 
-float randf()
+// --- xorshift64* PRNG ---
+static uint64_t rng_state;
+
+void rand_seed(unsigned int seed)
 {
-    return (float)rand() / (float)RAND_MAX;
+    rng_state = seed;
+    if (rng_state == 0) rng_state = 1;
+    // warmup to avoid seed correlation
+    for (int i = 0; i < 4; i++) {
+        uint64_t x = rng_state;
+        x ^= x >> 12; x ^= x << 25; x ^= x >> 27;
+        rng_state = x;
+    }
+}
+
+float rand01(void)
+{
+    uint64_t x = rng_state;
+    x ^= x >> 12; x ^= x << 25; x ^= x >> 27;
+    rng_state = x;
+    return (float)((x * 0x2545F4914F6CDD1DULL) >> 40) / 16777216.0f;
+}
+
+float rand_range(float min, float max)
+{
+    return min + rand01() * (max - min);
 }
 
