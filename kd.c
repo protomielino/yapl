@@ -182,8 +182,6 @@ int kd_query_radius(kd_node *tree, float px, float py, float radius, int *out, i
     return count;
 }
 
-// draw kd tree partitions in world coords using mock draw functions.
-// draw_line(x1,y1,x2,y2) must be implemented externally (mock).
 void kd_draw_tree_partitions(kd_node *node)
 {
     if (!node)
@@ -200,9 +198,6 @@ void kd_draw_tree_partitions(kd_node *node)
     kd_draw_tree_partitions(node->right);
 }
 
-// draw kd-tree partitions and node points.
-// node: current node
-// depth: recursion depth (used for color/size if desired)
 void kd_draw_tree_partitions_full(kd_node *node, int depth)
 {
     if (!node)

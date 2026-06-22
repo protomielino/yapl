@@ -2,7 +2,6 @@
 #include <stdio.h>
 #include <string.h>
 #include <math.h>
-#include <float.h>
 #include <time.h>
 
 #include <raylib.h>
@@ -23,7 +22,7 @@ Vector2 scale;
 
 Vector2 startPan;
 
-int bx, tx, dx;
+int bx;
 int by, ty, dy;
 int textDim;
 char text[1024] = {};
@@ -212,8 +211,6 @@ void initHUD()
     ty = by;
     dy = textDim;
     bx = 10;
-    tx = bx;
-    dx = textDim;
     cell_size = 50.0f;
     cell_row_hover = 0;
     cell_col_hover = 0;
@@ -232,9 +229,8 @@ void draw_line_world(float x1, float y1, float x2, float y2)
     DrawLine(v1.x, v1.y, v2.x, v2.y, c);
 }
 
-void draw_particle_world(float x, float y, float size, int color, float mass)
+void draw_particle_world(float x, float y, int color, float mass)
 {
-    (void)size;
     Color c = ColorFromHSV(360.0f / DEFAULT_M * color, 1.0f, 1.0f);
     Vector2 v = { x * WIDTH, y * HEIGHT };
     v = WorldToScreen(v);
@@ -460,9 +456,6 @@ int main(int argc, char *argv[])
         updatePanZoom();
         processInputs();
 
-        if (IsKeyPressed(KEY_A)) {
-            sim_randomize_all(s, 0.5f, 2.0f);
-        }
         if (IsKeyPressed(KEY_SPACE)) {
             sim_randomize_all(s, 0.5f, 2.0f);
         }

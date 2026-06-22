@@ -17,7 +17,7 @@ extern const int HEIGHT;
 int KD_CURRENT_POINT_COUNT = 0;
 sim *CURRENT_SIM_INSTANCE = NULL;
 
-extern void draw_particle_world(float x, float y, float size, int color, float mass);
+extern void draw_particle_world(float x, float y, int color, float mass);
 
 static inline float force_law(float r, float a, float beta)
 {
@@ -292,7 +292,7 @@ void sim_draw_frame(sim *s)
 {
     if (!s) return;
     for (int i = 0; i < s->n; ++i) {
-        draw_particle_world(s->positions[i].x, s->positions[i].y, 1.5f, s->colors[i], s->masses[i]);
+        draw_particle_world(s->positions[i].x, s->positions[i].y, s->colors[i], s->masses[i]);
     }
 }
 
