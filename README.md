@@ -14,7 +14,7 @@ make clean
 ## Usage
 
 ```
-yapl [-n <count>] [-m <colors>] [--backend grid|kd|qt]
+yapl [-n <count>] [-m <colors>] [--backend grid|kd|qt] [--force-law standard|linear|lj|lennard-jones|smooth|damped-wave]
 ```
 
 | Argument | Default | Description |
@@ -22,6 +22,7 @@ yapl [-n <count>] [-m <colors>] [--backend grid|kd|qt]
 | `-n` | 1000 | Number of particles |
 | `-m` | 6 | Number of colors / types |
 | `--backend` | `grid` | Spatial partition backend (`grid`, `kd`, or `qt`) |
+| `--force-law` | `standard` | Force law for pair interactions |
 
 ## Controls
 
@@ -38,6 +39,7 @@ yapl [-n <count>] [-m <colors>] [--backend grid|kd|qt]
 | `[r]` | Randomize positions |
 | `[p]` | Pause / unpause |
 | `[d]` | Show tree partitions overlay |
+| `[f]` | Cycle force law at runtime |
 | `[h]` | Toggle help |
 | `[H]` | Toggle HUD |
 | `[R]` | Reset pan & zoom |

@@ -19,7 +19,15 @@ sim *CURRENT_SIM_INSTANCE = NULL;
 
 extern void draw_particle_world(float x, float y, int color, float mass);
 
-static inline float force_law(float r, float a, float beta)
+const char *force_law_names[] = {
+    "standard",
+    "linear",
+    "lennard-jones",
+    "smooth",
+    "damped-wave",
+};
+
+static inline float force_law_standard(float r, float a, float beta)
 {
     if (r < beta) {
         return r / beta - 1.0f;
@@ -27,6 +35,57 @@ static inline float force_law(float r, float a, float beta)
         return a * (1.0f - fabsf(2.0f * r - 1.0f - beta) / (1.0f - beta));
     } else {
         return 0.0f;
+    }
+}
+
+static inline float force_law_linear(float r, float a, float beta)
+{
+    (void)beta;
+    if (r < 1.0f)
+        return a * (1.0f - r);
+    return 0.0f;
+}
+
+static inline float force_law_lennard_jones(float r, float a, float beta)
+{
+    (void)beta;
+    if (r >= 1.0f)
+        return 0.0f;
+    float reff = fmaxf(r, 0.001f);
+    float sigma = 1.0f / powf(2.0f, 1.0f / 6.0f);
+    float sr = sigma / reff;
+    float sr6 = sr * sr * sr * sr * sr * sr;
+    return a * 24.0f / reff * (2.0f * sr6 * sr6 - sr6);
+}
+
+static inline float force_law_smooth(float r, float a, float beta)
+{
+    (void)beta;
+    if (r < 1.0f) {
+        float u = 1.0f - r * r;
+        return a * u * u;
+    }
+    return 0.0f;
+}
+
+static inline float force_law_damped_wave(float r, float a, float beta)
+{
+    if (r >= 1.0f)
+        return 0.0f;
+    float omega = (beta > 0.001f) ? 3.14159265f / beta : 3.14159265f * 2.0f;
+    float envelope = 1.0f - r;
+    return a * sinf(omega * r) * envelope * envelope;
+}
+
+float sim_eval_force_law(force_law_type law, float r, float a, float beta)
+{
+    switch (law) {
+        case FORCE_LAW_STANDARD:     return force_law_standard(r, a, beta);
+        case FORCE_LAW_LINEAR:       return force_law_linear(r, a, beta);
+        case FORCE_LAW_LENNARD_JONES: return force_law_lennard_jones(r, a, beta);
+        case FORCE_LAW_SMOOTH:       return force_law_smooth(r, a, beta);
+        case FORCE_LAW_DAMPED_WAVE:  return force_law_damped_wave(r, a, beta);
+        default:                     return 0.0f;
     }
 }
 
@@ -63,12 +122,13 @@ static inline void min_image_disp(float ax, float ay, float bx, float by, float 
     *out_dx = dx; *out_dy = dy;
 }
 
-sim* sim_create(int n, int m, backend_type backend, float dt, float friction_half_life, float rmax, float forceFactor)
+sim* sim_create(int n, int m, backend_type backend, force_law_type force_law, float dt, float friction_half_life, float rmax, float forceFactor)
 {
     sim* s = (sim*)malloc(sizeof(sim));
     s->n = n;
     s->m = m;
     s->backend = backend;
+    s->force_law = force_law;
     s->dt = dt;
     s->friction_half_life = friction_half_life;
     s->rmax = rmax;
@@ -153,7 +213,22 @@ static inline void compute_forces_for_particle(sim *s, int i, const int *neighbo
             int cj = s->colors[j];
             float a = s->matrix[ci * mi + cj];
             float beta = s->min_dist_matrix[ci * mi + cj];
-            float f = force_law(r / rmax, a, beta);
+            float rn = r / rmax;
+            float f;
+            switch (s->force_law) {
+                case FORCE_LAW_STANDARD:
+                    f = force_law_standard(rn, a, beta); break;
+                case FORCE_LAW_LINEAR:
+                    f = force_law_linear(rn, a, beta); break;
+                case FORCE_LAW_LENNARD_JONES:
+                    f = force_law_lennard_jones(rn, a, beta); break;
+                case FORCE_LAW_SMOOTH:
+                    f = force_law_smooth(rn, a, beta); break;
+                case FORCE_LAW_DAMPED_WAVE:
+                    f = force_law_damped_wave(rn, a, beta); break;
+                default:
+                    f = 0.0f; break;
+            }
             totalForceX += rx * invr * f;
             totalForceY += ry * invr * f;
         }

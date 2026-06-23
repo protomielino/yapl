@@ -74,6 +74,55 @@ void showHUD(sim *s)
         sprintf(text, "backend: %s", backend_name);
         DrawText(text, 10, ty, textDim, WHITE);
         ty += dy;
+        sprintf(text, "force-law: %s", force_law_names[s->force_law]);
+        int law_label_w = MeasureText(text, textDim);
+        DrawText(text, 10, ty, textDim, WHITE);
+
+        { // small force-law plot
+            int gw = 64, gh = 36;
+            int gx = 10 + law_label_w + 8;
+            int gy = ty;
+            float a_disp = 1.0f, beta_disp = 0.3f;
+            int ns = 60;
+
+            // sample to find y range
+            float ymin = 0, ymax = 0;
+            for (int i = 0; i <= ns; ++i) {
+                float r = (float)i / ns;
+                float f = sim_eval_force_law(s->force_law, r, a_disp, beta_disp);
+                f = fminf(fmaxf(f, -3.0f), 3.0f);
+                if (f < ymin) ymin = f;
+                if (f > ymax) ymax = f;
+            }
+            float range = ymax - ymin;
+            if (range < 0.01f) range = 1.0f;
+
+            DrawRectangle(gx-1, gy-1, gw+2, gh+2, (Color){20,20,20,220});
+            DrawRectangleLines(gx, gy, gw, gh, (Color){80,80,80,180});
+
+            // zero line
+            if (ymin < 0 && ymax > 0) {
+                float zy = gy + gh - (0 - ymin) / range * gh;
+                DrawLine(gx, (int)zy, gx + gw - 1, (int)zy, (Color){60,60,60,100});
+            }
+
+            // curve segments
+            for (int i = 0; i < ns; ++i) {
+                float r1 = (float)i / ns, r2 = (float)(i+1) / ns;
+                float f1 = sim_eval_force_law(s->force_law, r1, a_disp, beta_disp);
+                float f2 = sim_eval_force_law(s->force_law, r2, a_disp, beta_disp);
+                f1 = fminf(fmaxf(f1, -3.0f), 3.0f);
+                f2 = fminf(fmaxf(f2, -3.0f), 3.0f);
+                int x1 = gx + (int)(r1 * gw);
+                int y1 = gy + gh - (int)((f1 - ymin) / range * gh);
+                int x2 = gx + (int)(r2 * gw);
+                int y2 = gy + gh - (int)((f2 - ymin) / range * gh);
+                y1 = (y1 < gy) ? gy : (y1 >= gy + gh ? gy + gh - 1 : y1);
+                y2 = (y2 < gy) ? gy : (y2 >= gy + gh ? gy + gh - 1 : y2);
+                DrawLine(x1, y1, x2, y2, WHITE);
+            }
+        }
+        ty += dy;
         ty += dy;
     }
 }
@@ -102,6 +151,9 @@ void showHelp()
         sprintf(text, "[z,x,c,v] forces, minDist, masses, radii");
         DrawText(text, 10, ty, textDim, WHITE);
         ty += dy;
+        sprintf(text, "[f] cycle force law");
+        DrawText(text, 10, ty, textDim, WHITE);
+        ty += dy;
         sprintf(text, "[scroll] edit cell under mouse");
         DrawText(text, 10, ty, textDim, WHITE);
         ty += dy;
@@ -115,8 +167,16 @@ void showHelp()
     }
 }
 
-void processInputs()
+void cycle_force_law(sim *s)
 {
+    s->force_law = (force_law_type)((s->force_law + 1) % FORCE_LAW_COUNT);
+}
+
+void processInputs(sim *s)
+{
+    if (IsKeyPressed(KEY_F)) {
+        cycle_force_law(s);
+    }
     if(IsKeyDown(KEY_R) && IsKeyDown(KEY_LEFT_SHIFT)) {
         offset = Vector2Zero();
         offset = Vector2Divide(offset, scale);
@@ -418,6 +478,7 @@ int main(int argc, char *argv[])
     int n = DEFAULT_N;
     int m_colors = DEFAULT_M;
     backend_type backend = BACKEND_GRID;
+    force_law_type force_law = FORCE_LAW_STANDARD;
 
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "-n") == 0 && i + 1 < argc) {
@@ -430,8 +491,31 @@ int main(int argc, char *argv[])
             else if (strcmp(argv[i], "grid") == 0) backend = BACKEND_GRID;
             else if (strcmp(argv[i], "qt") == 0) backend = BACKEND_QUADTREE;
             else { fprintf(stderr, "Unknown backend: %s (use grid, kd, or qt)\n", argv[i]); return 1; }
+        } else if (strcmp(argv[i], "--force-law") == 0 && i + 1 < argc) {
+            i++;
+            int found = 0;
+            if (strcmp(argv[i], "lj") == 0) {
+                force_law = FORCE_LAW_LENNARD_JONES;
+                found = 1;
+            }
+            if (!found) {
+                for (int fl = 0; fl < FORCE_LAW_COUNT; ++fl) {
+                    if (strcmp(argv[i], force_law_names[fl]) == 0) {
+                        force_law = (force_law_type)fl;
+                        found = 1;
+                        break;
+                    }
+                }
+            }
+            if (!found) {
+                fprintf(stderr, "Unknown force law: %s (use", argv[i]);
+                for (int fl = 0; fl < FORCE_LAW_COUNT; ++fl)
+                    fprintf(stderr, "%s %s", fl == 0 ? "" : ", ", force_law_names[fl]);
+                fprintf(stderr, ")\n");
+                return 1;
+            }
         } else if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
-            printf("Usage: yapl [-n N] [-m M] [--backend grid|kd|qt]\n");
+            printf("Usage: yapl [-n N] [-m M] [--backend grid|kd|qt] [--force-law standard|linear|lj|lennard-jones|smooth|damped-wave]\n");
             return 0;
         } else {
             fprintf(stderr, "Unknown option: %s\n", argv[i]);
@@ -450,7 +534,7 @@ int main(int argc, char *argv[])
     showMassesDBG = false;
     showRadiiDBG = false;
 
-    sim *s = sim_create(n, m_colors, backend, DEFAULT_DT, DEFAULT_FRICTION_HALF_LIFE, DEFAULT_RMAX, FORCE_FACTOR);
+    sim *s = sim_create(n, m_colors, backend, force_law, DEFAULT_DT, DEFAULT_FRICTION_HALF_LIFE, DEFAULT_RMAX, FORCE_FACTOR);
 
     initPanZoom(Vector2Zero(), Vector2One());
     initHUD();
@@ -461,7 +545,7 @@ int main(int argc, char *argv[])
     while (!WindowShouldClose())
     {
         updatePanZoom();
-        processInputs();
+        processInputs(s);
 
         if (IsKeyPressed(KEY_SPACE)) {
             sim_randomize_all(s, 0.5f, 2.0f);
