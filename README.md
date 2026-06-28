@@ -14,7 +14,7 @@ make clean
 ## Usage
 
 ```
-yapl [-n <count>] [-m <colors>] [--backend grid|kd|qt] [--force-law standard|linear|lj|lennard-jones|smooth|damped-wave]
+yapl [-n <count>] [-m <colors>] [--backend grid|kd|qt] [--force-law standard|linear|smooth|damped-wave]
 ```
 
 | Argument | Default | Description |

@@ -494,17 +494,11 @@ int main(int argc, char *argv[])
         } else if (strcmp(argv[i], "--force-law") == 0 && i + 1 < argc) {
             i++;
             int found = 0;
-            if (strcmp(argv[i], "lj") == 0) {
-                force_law = FORCE_LAW_LENNARD_JONES;
-                found = 1;
-            }
-            if (!found) {
-                for (int fl = 0; fl < FORCE_LAW_COUNT; ++fl) {
-                    if (strcmp(argv[i], force_law_names[fl]) == 0) {
-                        force_law = (force_law_type)fl;
-                        found = 1;
-                        break;
-                    }
+            for (int fl = 0; fl < FORCE_LAW_COUNT; ++fl) {
+                if (strcmp(argv[i], force_law_names[fl]) == 0) {
+                    force_law = (force_law_type)fl;
+                    found = 1;
+                    break;
                 }
             }
             if (!found) {
@@ -515,7 +509,7 @@ int main(int argc, char *argv[])
                 return 1;
             }
         } else if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
-            printf("Usage: yapl [-n N] [-m M] [--backend grid|kd|qt] [--force-law standard|linear|lj|lennard-jones|smooth|damped-wave]\n");
+            printf("Usage: yapl [-n N] [-m M] [--backend grid|kd|qt] [--force-law standard|linear|smooth|damped-wave]\n");
             return 0;
         } else {
             fprintf(stderr, "Unknown option: %s\n", argv[i]);
